@@ -22,6 +22,7 @@ from bot.handlers import (
     channels,
     common,
     compat,
+    inline,
     invite,
     matrix,
     notifications,
@@ -94,10 +95,12 @@ def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
     dp.callback_query.middleware(db_mw)
     dp.chat_join_request.middleware(db_mw)
     dp.my_chat_member.middleware(db_mw)
+    dp.inline_query.middleware(db_mw)
+    dp.chosen_inline_result.middleware(db_mw)
     dp.errors.register(make_on_error(db_mw))
     # start.router — последним: в нём перехват свободного текста (ввод даты)
     dp.include_routers(
-        admin.router, admin_stats.router, admin_tools.router, admin_broadcast.router, channel_admin.router, common.router, notifications.router, matrix.router, channels.router, invite.router,
+        admin.router, admin_stats.router, admin_tools.router, admin_broadcast.router, channel_admin.router, common.router, notifications.router, inline.router, matrix.router, channels.router, invite.router,
         compat.router, start.router,
     )
     return dp

@@ -170,6 +170,18 @@ class TG:
             "date": int(datetime.now().timestamp()), "old_chat_member": member(old), "new_chat_member": member(new),
         }})
 
+    async def inline(self, tg_id: int, query: str = "", first_name: str = "Аня") -> list:
+        """Пользователь набрал @бот в чате."""
+        return await self._feed({"inline_query": {
+            "id": str(next(self._upd)), "from": self._user(tg_id, first_name), "query": query, "offset": "",
+        }})
+
+    async def chosen(self, tg_id: int, result_id: str, first_name: str = "Аня") -> list:
+        """Пользователь выбрал карточку (нужен включённый inline feedback у бота)."""
+        return await self._feed({"chosen_inline_result": {
+            "result_id": result_id, "from": self._user(tg_id, first_name), "query": "",
+        }})
+
     async def click(self, tg_id: int, data: str, first_name: str = "Аня") -> list:
         calls = await self._feed({"callback_query": {
             "id": str(next(self._upd)), "from": self._user(tg_id, first_name), "chat_instance": "ci", "data": data,

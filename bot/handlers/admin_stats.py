@@ -27,6 +27,8 @@ DEFAULT_SECTION, DEFAULT_PERIOD = "summary", "today"
 NO_PERIOD = {"retention", "errors"}  # эти разделы считаются по фиксированному окну
 
 SPHERE_NAMES = {key: title for key, _, _, title in msg.SPHERE_BUTTONS}
+INLINE_NAMES = {"arcana": msg.INLINE_ARCANA_TITLE, "day": msg.INLINE_DAY_TITLE, "compat": msg.INLINE_COMPAT_TITLE,
+                "need_date": "без даты"}
 
 
 def user_label(user: User) -> str:
@@ -90,7 +92,8 @@ async def render_virality(session: AsyncSession, p) -> str:
         f"Старт → активация по приглашениям: <b>{pct(v.invited_activated, v.invited_users)}</b> ({v.invited_activated} из {v.invited_users})",
         f"Пришли по рефералке: <b>{pct(v.invited_users, v.new_users)}</b> от новых",
         f"Медиана до первого активированного друга: <b>{median}</b>",
-        f"Inline-шеринг (выбрали вариант): <b>{v.inline_shared}</b>",
+        f"Inline-шеринг (выбрали карточку): <b>{v.inline_shared}</b>"
+        + (f" ({', '.join(f'{INLINE_NAMES.get(k, k)} — {n}' for k, n in v.inline_variants.most_common())})" if v.inline_shared else ""),
         "",
         "Топ приглашающих — /top_inviters",
     ])

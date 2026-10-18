@@ -227,6 +227,7 @@ class Virality:
     new_users: int = 0
     median_first_friend: float | None = None
     inline_shared: int = 0
+    inline_variants: Counter = field(default_factory=Counter)
     uncounted: int = 0
     heavy_inviters: list[tuple[int, date, int]] = field(default_factory=list)  # (user_id, день, активаций)
     no_username: int = 0
@@ -276,9 +277,9 @@ async def virality(session: AsyncSession, p: Period) -> Virality:
             deltas.append(max((as_utc(first_at) - as_utc(inviter_act)).total_seconds(), 0))
     v.median_first_friend = statistics.median(deltas) if deltas else None
 
-    v.inline_shared = await _count(
-        session, select(func.count()).select_from(Event).where(Event.name == "inline_shared", *p.clauses(Event.created_at))
-    )
+    for ev in await _events(session, "inline_shared", p):
+        v.inline_variants[(ev.payload or {}).get("variant", "?")] += 1
+    v.inline_shared = sum(v.inline_variants.values())
 
     # Антифрод
     v.uncounted = await _count(session, select(func.count()).select_from(Referral).where(
