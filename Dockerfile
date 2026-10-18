@@ -8,4 +8,5 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-CMD ["sh", "-c", "alembic upgrade head && python -m bot.main"]
+# Бэкап перед миграциями (только для SQLite), миграции, запуск бота
+CMD ["sh", "-c", "python scripts/premigrate_backup.py && alembic upgrade head && python -m bot.main"]
