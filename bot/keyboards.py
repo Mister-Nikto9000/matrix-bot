@@ -19,7 +19,8 @@ def _cb(text: str, data: str) -> list[InlineKeyboardButton]:
 
 
 def teaser_kb() -> InlineKeyboardMarkup:
-    return _kb(_cb(msg.BTN_FULL, "full"), _cb(msg.BTN_COMPAT, "compat"), _cb(msg.BTN_INVITE, "invite"))
+    return _kb(_cb(msg.BTN_FULL, "full"), _cb(msg.BTN_COMPAT, "compat"), _cb(msg.BTN_INVITE, "invite"),
+               _cb(msg.BTN_STORY, "story"))
 
 
 def channels_kb(channels: list[Channel]) -> InlineKeyboardMarkup:
@@ -77,6 +78,10 @@ def share_cb_kb(kind: str) -> InlineKeyboardMarkup:
 def share_url_kb(link: str, text: str) -> InlineKeyboardMarkup:
     url = f"https://t.me/share/url?url={quote(link, safe='')}&text={quote(text, safe='')}"
     return _kb([InlineKeyboardButton(text=msg.BTN_SEND_TO_FRIEND, url=url)])
+
+
+def group_matrix_kb(link: str) -> InlineKeyboardMarkup:
+    return _kb([InlineKeyboardButton(text=msg.BTN_GROUP_MATRIX, url=link)])
 
 
 def compat_another_kb() -> InlineKeyboardMarkup:

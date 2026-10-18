@@ -2,11 +2,18 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
-from aiogram.types import ChatJoinRequest, ChatMemberUpdated, InlineKeyboardMarkup, TelegramObject
+from aiogram.types import ChatJoinRequest, ChatMemberUpdated, InlineKeyboardMarkup, Message, TelegramObject
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.services import health, users
 from bot.services.gender import current_user, render
+
+
+def _is_group_chatter(event: TelegramObject) -> bool:
+    chat = getattr(event, "chat", None)
+    if not isinstance(event, Message) or chat is None or chat.type not in ("group", "supergroup"):
+        return False
+    return not (event.text or "").split("@")[0].split()[:1] == ["/matrix"]
 
 
 class DbMiddleware(BaseMiddleware):
@@ -26,8 +33,9 @@ class DbMiddleware(BaseMiddleware):
             data["session"] = session
             tg_user = data.get("event_from_user")
             token = None
-            # Заявка в канал и смена прав бота в канале — не повод заводить пользователя бота
-            if tg_user and not isinstance(event, (ChatJoinRequest, ChatMemberUpdated)):
+            # Заявка в канал и смена прав бота в канале — не повод заводить пользователя бота;
+            # так же как и обычная болтовня в группе: пользователем становится только тот, кто позвал /matrix
+            if tg_user and not isinstance(event, (ChatJoinRequest, ChatMemberUpdated)) and not _is_group_chatter(event):
                 user, is_new = await users.get_or_create(session, tg_user.id, tg_user.username, tg_user.first_name)
                 await users.touch(session, user)
                 data["user"] = user
@@ -56,6 +64,8 @@ class RenderMiddleware(BaseRequestMiddleware):
         gender = user.gender if user is not None and chat_id in (None, user.tg_id) else None
         if isinstance(getattr(method, "text", None), str):
             method.text = render(method.text, gender)
+        if isinstance(getattr(method, "caption", None), str):  # подписи к фото и файлам
+            method.caption = render(method.caption, gender)
         markup = getattr(method, "reply_markup", None)
         if isinstance(markup, InlineKeyboardMarkup):
             for row in markup.inline_keyboard:

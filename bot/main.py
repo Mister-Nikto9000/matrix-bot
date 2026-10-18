@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, ErrorEvent
+from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, ErrorEvent
 
 from bot.config import get_settings
 from bot.content import messages as msg
@@ -24,11 +24,13 @@ from bot.handlers import (
     channels,
     common,
     compat,
+    group,
     inline,
     invite,
     matrix,
     notifications,
     start,
+    story,
 )
 from bot.jobs import build_scheduler
 from bot.services import alerts, health
@@ -46,6 +48,8 @@ COMMANDS = [
     BotCommand(command="help", description="Помощь"),
     BotCommand(command="deletedata", description="Удалить мои данные"),
 ]
+
+GROUP_COMMANDS = [BotCommand(command="matrix", description="Узнать свой аркан")]
 
 
 async def record_error(sessionmaker, exc: BaseException) -> None:
@@ -103,8 +107,10 @@ def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
     dp.errors.register(make_on_error(db_mw))
     # start.router — последним: в нём перехват свободного текста (ввод даты)
     dp.include_routers(
-        admin.router, admin_stats.router, admin_tools.router, admin_broadcast.router, channel_admin.router, common.router, notifications.router, inline.router, matrix.router, channels.router, invite.router,
-        compat.router, start.router,
+        group.router,  # группы — первыми: личные сценарии в группах не должны срабатывать
+        admin.router, admin_stats.router, admin_tools.router, admin_broadcast.router, channel_admin.router,
+        common.router, notifications.router, inline.router, story.router, matrix.router, channels.router,
+        invite.router, compat.router, start.router,
     )
     return dp
 
@@ -140,6 +146,7 @@ async def main() -> None:
 
     dp = build_dispatcher(DbMiddleware(sessionmaker))
     await bot.set_my_commands(COMMANDS)
+    await bot.set_my_commands(GROUP_COMMANDS, scope=BotCommandScopeAllGroupChats())
     await setup_profile(bot)
     log.info("Bot @%s started (long polling)", settings.bot_username)
     scheduler = build_scheduler(bot, sessionmaker)

@@ -27,7 +27,7 @@ async def test_start_and_date_validation(tg, db):
     assert "Личность — 7. Колесница" in texts[1]
     assert "Таланты — 3. Императрица" in texts[1]
     assert "Предназначение — 3. Императрица" in texts[1]
-    assert [b.callback_data for b in buttons(sent(calls)[1])] == ["full", "compat", "invite"]
+    assert [b.callback_data for b in buttons(sent(calls)[1])] == ["full", "compat", "invite", "story"]
 
     user = await _user(db, U)
     assert str(user.birth_date) == "1994-03-07" and user.activated_at is not None

@@ -15,7 +15,7 @@ from aiogram.client.default import DefaultBotProperties  # noqa: E402
 from aiogram.client.session.base import BaseSession  # noqa: E402
 from aiogram.enums import ParseMode  # noqa: E402
 from aiogram.fsm.storage.memory import MemoryStorage  # noqa: E402
-from aiogram.methods import AnswerCallbackQuery, CreateChatInviteLink, GetChat, GetChatMember, SendMessage  # noqa: E402
+from aiogram.methods import AnswerCallbackQuery, CreateChatInviteLink, GetChat, GetChatMember, GetMe, SendMessage  # noqa: E402
 from aiogram.types import (  # noqa: E402
     ChatFullInfo,
     ChatInviteLink,
@@ -66,6 +66,8 @@ class FakeTelegram(BaseSession):
                  "chat": {"id": method.chat_id, "type": "private"}, "text": method.text},
                 context={"bot": bot},
             )
+        if isinstance(method, GetMe):
+            return TgUser(id=bot.id, is_bot=True, first_name="bot", username="test_bot")
         if isinstance(method, GetChatMember):
             user = TgUser(id=method.user_id, is_bot=method.user_id == bot.id, first_name="x")
             status = self.members.get((method.chat_id, method.user_id))
@@ -136,6 +138,15 @@ class TG:
             "text": text, "entities": entities,
         }})
         return await self._answer_gender(calls, tg_id, first_name)
+
+    async def group_send(self, chat_id: int, tg_id: int, text: str, first_name: str = "Аня") -> list:
+        """Сообщение в супергруппе, где есть бот."""
+        entities = [{"type": "bot_command", "offset": 0, "length": len(text.split()[0])}] if text.startswith("/") else None
+        return await self._feed({"message": {
+            "message_id": 1, "date": int(datetime.now().timestamp()),
+            "chat": {"id": chat_id, "type": "supergroup", "title": "Чат"}, "from": self._user(tg_id, first_name),
+            "text": text, "entities": entities,
+        }})
 
     async def join_request(self, tg_id: int, chat_id: int) -> list:
         return await self._feed({"chat_join_request": {
@@ -249,6 +260,8 @@ def _fast_pushes(monkeypatch):
     async def no_sleep(_seconds):
         return None
 
+    from bot.handlers import group
+    group._last_reply.clear()
     monkeypatch.setattr(pushes, "limiter", pushes.RateLimiter(10_000_000, sleep=no_sleep))
     monkeypatch.setattr(pushes, "_sleep", no_sleep)
 
