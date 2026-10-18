@@ -79,6 +79,11 @@ def year_forecast(m: Matrix, year: int) -> int:
     return reduce(m.a + m.b + reduce(digit_sum(year)))
 
 
+def personal_day(m: Matrix, day: date) -> int:
+    """Число дня: аркан личности + приведённые день и месяц даты."""
+    return reduce(m.a + reduce(day.day) + reduce(day.month))
+
+
 def compatibility(m1: Matrix, m2: Matrix) -> CompatMatrix:
     return CompatMatrix(
         a=reduce(m1.a + m2.a),

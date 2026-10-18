@@ -155,3 +155,17 @@ class BotState(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class PushLog(Base):
+    """Отправленные пуши. unique(user_id, kind): каждый триггер уходит человеку один раз,
+    ежедневное число дня — с датой в kind («daily:2026-10-18»)."""
+
+    __tablename__ = "push_log"
+    __table_args__ = (UniqueConstraint("user_id", "kind", name="uq_push_log_user_kind"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    clicked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

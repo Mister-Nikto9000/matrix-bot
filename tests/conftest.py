@@ -44,12 +44,16 @@ class FakeTelegram(BaseSession):
         self.members: dict[tuple[int, int], str] = {}  # (chat_id, user_id) -> member/administrator
         self.chats: dict[str, int] = {}  # "@username" -> chat_id
         self.forbidden: set[int] = set()  # chat_id, которые заблокировали бота
+        self.retry_once: dict[int, int] = {}  # chat_id -> retry_after: первая отправка получит 429
         self.titles: dict[int, str] = {}  # chat_id -> название канала
         self._ids = itertools.count(1)
 
     async def make_request(self, bot, method, timeout=None):
         self.calls.append(method)
         if isinstance(method, SendMessage):
+            if method.chat_id in self.retry_once:
+                from aiogram.exceptions import TelegramRetryAfter
+                raise TelegramRetryAfter(method=method, message="Too Many Requests", retry_after=self.retry_once.pop(method.chat_id))
             if method.chat_id in self.forbidden:
                 from aiogram.exceptions import TelegramForbiddenError
                 raise TelegramForbiddenError(method=method, message="Forbidden: bot was blocked by the user")
@@ -216,6 +220,18 @@ def _no_pauses(monkeypatch):
     """Паузы между сообщениями разбора в тестах не нужны."""
     from bot.handlers import matrix
     monkeypatch.setattr(matrix, "FULL_PAUSE", 0)
+
+
+@pytest.fixture(autouse=True)
+def _fast_pushes(monkeypatch):
+    """Рассылки в тестах не ждут лимитов скорости и retry_after."""
+    from bot.services import pushes
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(pushes, "limiter", pushes.RateLimiter(10_000_000, sleep=no_sleep))
+    monkeypatch.setattr(pushes, "_sleep", no_sleep)
 
 
 @pytest.fixture

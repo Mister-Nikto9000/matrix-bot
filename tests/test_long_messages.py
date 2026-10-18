@@ -61,11 +61,12 @@ async def test_full_is_two_messages_with_typing_between(tg):
     await tg.click(U, "full")
     calls = tg.fake.calls[start:]
     kinds = [type(c).__name__ for c in calls if type(c).__name__ in ("SendMessage", "SendChatAction")]
-    assert kinds == ["SendMessage", "SendChatAction", "SendMessage", "SendMessage"]  # разбор 1, typing, разбор 2, меню
+    # разбор 1, typing, разбор 2, меню сфер, предложение числа дня
+    assert kinds == ["SendMessage", "SendChatAction", "SendMessage", "SendMessage", "SendMessage"]
     typing = [c for c in calls if isinstance(c, SendChatAction)][0]
     assert typing.action == "typing"
-    first, second, menu = sent_texts(calls)
+    first, second, menu, offer = sent_texts(calls)
     assert "Личность" in first and "Таланты" in first and "Предназначение" not in first
     assert "Предназначение" in second and "Зона комфорта" in second
-    assert "Сферы матрицы" in menu
+    assert "Сферы матрицы" in menu and "число дня" in offer
     assert all(len(t) < TELEGRAM_LIMIT for t in (first, second, menu))

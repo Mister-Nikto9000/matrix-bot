@@ -70,8 +70,32 @@ def compat_another_kb() -> InlineKeyboardMarkup:
     return _kb(_cb(msg.BTN_COMPAT_ANOTHER, "compat"))
 
 
-def settings_kb() -> InlineKeyboardMarkup:
-    return _kb(_cb(msg.BTN_CHANGE_DATE, "change_date"), _cb(msg.BTN_CHANGE_GENDER, "change_gender"))
+def settings_kb(user=None) -> InlineKeyboardMarkup:
+    rows = [_cb(msg.BTN_CHANGE_DATE, "change_date"), _cb(msg.BTN_CHANGE_GENDER, "change_gender")]
+    if user is not None:
+        rows.append(_cb(msg.BTN_DAILY_ON if user.notify_daily else msg.BTN_DAILY_OFF,
+                        "daily:off" if user.notify_daily else "daily:on"))
+        if user.notify_daily:
+            rows.append(_cb(msg.BTN_DAILY_TIME.format(hour=user.notify_hour), "daily:time"))
+        rows.append(_cb(msg.BTN_MARKETING_ON if user.notify_marketing else msg.BTN_MARKETING_OFF,
+                        "mkt:off" if user.notify_marketing else "mkt:on"))
+    return _kb(*rows)
+
+
+def daily_offer_kb() -> InlineKeyboardMarkup:
+    return _kb(_cb(msg.BTN_DAILY_YES, "daily:on"), _cb(msg.BTN_DAILY_NO, "daily:no"))
+
+
+def daily_hours_kb() -> InlineKeyboardMarkup:
+    return _kb([InlineKeyboardButton(text=f"{h}:00", callback_data=f"daily:h:{h}") for h in msg.DAILY_HOURS])
+
+
+def daily_kb(tomorrow_open: bool, kind: str = "daily") -> InlineKeyboardMarkup:
+    """Кнопки под числом дня; идут через pc:<вид>:<действие>, чтобы засчитывать нажатия."""
+    return _kb(
+        _cb(msg.BTN_TOMORROW_OPEN if tomorrow_open else msg.BTN_TOMORROW_LOCKED, f"pc:{kind}:tomorrow"),
+        _cb(msg.BTN_INVITE_FRIEND, f"pc:{kind}:invite"),
+    )
 
 
 def gender_kb() -> InlineKeyboardMarkup:

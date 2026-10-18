@@ -198,7 +198,7 @@ async def test_settings_change_gender_and_deletedata(tg, db):
     await tg.send(U, "/start")
     await tg.send(U, "07.03.1994")
     calls = await tg.send(U, "/settings")
-    assert [b.callback_data for b in buttons(sent(calls)[0])] == ["change_date", "change_gender"]
+    assert [b.callback_data for b in buttons(sent(calls)[0])][:2] == ["change_date", "change_gender"]
     assert buttons(sent(calls)[0])[1].text == msg.BTN_CHANGE_GENDER
 
     tg.auto_gender = None

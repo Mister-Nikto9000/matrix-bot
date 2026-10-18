@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot import keyboards as kb
 from bot.content import messages as msg
 from bot.db.models import User
-from bot.services import events, referrals, texts, unlocks
+from bot.services import daily, events, referrals, texts, unlocks
 from bot.services.sending import send_long
 from bot.services.matrix_calc import Matrix, calculate, year_forecast
 from bot.services.referrals import friends, friends_acc
@@ -141,6 +141,7 @@ async def show_full(message: Message, session: AsyncSession, user: User) -> None
     await asyncio.sleep(FULL_PAUSE)
     await send_long(message, second)
     await send_spheres_menu(message, session, user)
+    await daily.send_offer(message, session, user)
     await events.track(session, user.id, "full_shown")
 
 

@@ -25,3 +25,12 @@ def render(text: str, gender: str | None) -> str:
 
 def has_templates(text: str) -> bool:
     return bool(_TEMPLATE.search(text))
+
+
+def render_markup(markup, gender: str | None):
+    """Копия inline-клавиатуры с подставленными формами {м|ж} в тексте кнопок."""
+    if markup is None or not hasattr(markup, "inline_keyboard"):
+        return markup
+    rows = [[button.model_copy(update={"text": render(button.text, gender)}) for button in row]
+            for row in markup.inline_keyboard]
+    return markup.model_copy(update={"inline_keyboard": rows})

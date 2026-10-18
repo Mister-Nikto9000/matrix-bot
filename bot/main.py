@@ -23,6 +23,7 @@ from bot.handlers import (
     compat,
     invite,
     matrix,
+    notifications,
     start,
 )
 from bot.jobs import build_scheduler
@@ -35,7 +36,8 @@ COMMANDS = [
     BotCommand(command="matrix", description="Моя матрица"),
     BotCommand(command="compat", description="Совместимость"),
     BotCommand(command="invite", description="Пригласить друзей"),
-    BotCommand(command="settings", description="Изменить дату рождения"),
+    BotCommand(command="settings", description="Настройки и число дня"),
+    BotCommand(command="stop", description="Отключить напоминания"),
     BotCommand(command="help", description="Помощь"),
     BotCommand(command="deletedata", description="Удалить мои данные"),
 ]
@@ -94,7 +96,7 @@ def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
     dp.errors.register(make_on_error(db_mw))
     # start.router — последним: в нём перехват свободного текста (ввод даты)
     dp.include_routers(
-        admin.router, admin_stats.router, admin_tools.router, channel_admin.router, common.router, matrix.router, channels.router, invite.router,
+        admin.router, admin_stats.router, admin_tools.router, channel_admin.router, common.router, notifications.router, matrix.router, channels.router, invite.router,
         compat.router, start.router,
     )
     return dp

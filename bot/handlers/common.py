@@ -15,6 +15,14 @@ from bot.states import DateInput
 router = Router(name="common")
 
 
+def settings_text(user: User) -> str:
+    daily = msg.SETTINGS_DAILY_ON.format(hour=user.notify_hour) if user.notify_daily else msg.SETTINGS_DAILY_OFF
+    marketing = msg.SETTINGS_MARKETING_ON if user.notify_marketing else msg.SETTINGS_MARKETING_OFF
+    template = msg.SETTINGS if user.birth_date else msg.SETTINGS_NO_DATE
+    date = format_date(user.birth_date) if user.birth_date else ""
+    return template.format(date=date, daily=daily, marketing=marketing)
+
+
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(msg.HELP)
@@ -22,11 +30,7 @@ async def cmd_help(message: Message) -> None:
 
 @router.message(Command("settings"))
 async def cmd_settings(message: Message, user: User) -> None:
-    if user.birth_date:
-        text = msg.SETTINGS.format(date=format_date(user.birth_date))
-    else:
-        text = msg.SETTINGS_NO_DATE
-    await message.answer(text, reply_markup=kb.settings_kb())
+    await message.answer(settings_text(user), reply_markup=kb.settings_kb(user))
 
 
 @router.callback_query(F.data == "change_date")
