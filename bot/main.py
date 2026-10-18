@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -33,7 +34,7 @@ from bot.handlers import (
     story,
 )
 from bot.jobs import build_scheduler
-from bot.services import alerts, health
+from bot.services import alerts, health, migrate
 from bot.middlewares import DbMiddleware, RenderMiddleware, SubscriptionGate
 
 log = logging.getLogger("bot")
@@ -137,6 +138,8 @@ async def main() -> None:
     health.mark_started()
     settings = get_settings()
 
+    if os.environ.get("AUTO_MIGRATE", "1") != "0":
+        await migrate.upgrade_to_head(settings.database_url)
     engine = make_engine(settings.database_url)
     sessionmaker = make_sessionmaker(engine)
 
