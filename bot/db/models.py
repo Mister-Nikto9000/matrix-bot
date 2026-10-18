@@ -169,3 +169,18 @@ class PushLog(Base):
     kind: Mapped[str] = mapped_column(String(32))
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     clicked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Quest(Base):
+    """Квест дня: пригласить друга до 23:59 (по Москве) — награда: прогноз на завтра."""
+
+    __tablename__ = "quests"
+    __table_args__ = (UniqueConstraint("user_id", "day", name="uq_quests_user_day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    goal: Mapped[int] = mapped_column(Integer, default=1)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rewarded: Mapped[bool] = mapped_column(Boolean, default=False)

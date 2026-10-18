@@ -7,7 +7,7 @@ from bot import keyboards as kb
 from bot.config import REWARD_ORDER, get_settings
 from bot.content import messages as msg
 from bot.db.models import User
-from bot.services import events, pushes, referrals, unlocks
+from bot.services import events, pushes, quests, referrals, unlocks
 from bot.services.referrals import Activation, friends
 
 router = Router(name="invite")
@@ -47,9 +47,11 @@ def render_invite(user: User, count: int, unlocked: set[str]) -> str:
 async def send_invite(message: Message, session: AsyncSession, user: User) -> None:
     count = await referrals.counted_count(session, user.id)
     unlocked = await unlocks.get_unlocked(session, user.id)
-    await message.answer(
-        render_invite(user, count, unlocked), reply_markup=kb.share_cb_kb("r"), disable_web_page_preview=True
-    )
+    text = render_invite(user, count, unlocked)
+    quest = await quests.ensure(session, user)
+    if quest:
+        text += f"\n\n{quests.text(quest)}"
+    await message.answer(text, reply_markup=kb.share_cb_kb("r"), disable_web_page_preview=True)
     await events.track(session, user.id, "invite_opened")
 
 
@@ -58,8 +60,11 @@ async def notify_inviter(bot: Bot, session: AsyncSession, activation: Activation
     text = msg.INVITER_ACTIVATED.format(count=activation.count)
     if activation.new_items:
         text += msg.INVITER_UNLOCKED.format(items=", ".join(msg.ITEM_TITLES[i] for i in activation.new_items))
+    quest_done = await quests.on_friend_activated(session, activation.inviter)
+    if quest_done:
+        text += msg.QUEST_DONE_PUSH
     await pushes.send_push(
-        bot, session, activation.inviter, "friend", text, kb.friend_kb(activation.new_items),
+        bot, session, activation.inviter, "friend", text, kb.friend_kb(activation.new_items, quest_done),
         log_kind=f"friend:{activation.invited_id}", commit=False,
     )
 

@@ -61,7 +61,7 @@ async def render_user_card(session: AsyncSession, user: User) -> str:
         select(func.count()).select_from(Referral).where(Referral.inviter_id == user.id, Referral.counted.is_(True))
     ) or 0
     unlocked = list(await session.scalars(select(Unlock.item).where(Unlock.user_id == user.id)))
-    spheres = ", ".join(SPHERE_NAMES.get(i, i) for i in unlocked) or "нет"
+    spheres = ", ".join(SPHERE_NAMES[i] for i in unlocked if i in SPHERE_NAMES) or "нет"
     channels = f"пройдены {fmt_dt(user.channels_ok_at)}" if user.channels_ok_at else "не пройдены"
     daily = f"число дня в {user.notify_hour}:00" if user.notify_daily else "число дня выкл."
     marketing = "маркетинг вкл." if user.notify_marketing else "маркетинг выкл."

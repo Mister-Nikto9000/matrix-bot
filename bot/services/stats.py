@@ -18,6 +18,7 @@ from bot.db.models import (
     ErrorLog,
     Event,
     JoinRequest,
+    Quest,
     Referral,
     User,
 )
@@ -544,7 +545,22 @@ async def mailings(session: AsyncSession, p: Period) -> Mailings:
             counter[(ev.payload or {}).get("kind", "?")] += 1
     for kind in sorted(set(sent) | set(blocked) | set(clicked)):
         m.pushes.append(PushRow(kind, sent[kind], blocked[kind], clicked[kind]))
+    m.quests = await quest_stats(session, p)
     return m
+
+
+async def quest_stats(session: AsyncSession, p: Period) -> dict:
+    """Квесты за период: показано (создано на день) и выполнено."""
+    clauses = []
+    if p.since is not None:
+        clauses.append(Quest.day >= msk_day(p.since))
+    if p.until is not None:
+        clauses.append(Quest.day < msk_day(p.until))
+    base = select(func.count()).select_from(Quest).where(*clauses)
+    shown = await _count(session, base)
+    if not shown:
+        return {}
+    return {"shown": shown, "done": await _count(session, base.where(Quest.completed_at.is_not(None)))}
 
 
 # --- Ошибки ---

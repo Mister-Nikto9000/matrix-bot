@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from bot import keyboards as kb
 from bot.content import messages as msg
 from bot.db.models import Event, PushLog, User
-from bot.services import events, pushes, texts, unlocks
+from bot.services import events, pushes, quests, texts, unlocks
 from bot.services.clock import to_msk
 from bot.services.matrix_calc import calculate, personal_day
 
@@ -25,9 +25,7 @@ def log_kind(day: date) -> str:
     return f"{KIND}:{day.isoformat()}"
 
 
-def tomorrow_item(day: date) -> str:
-    """Разовый доступ к прогнозу на завтра хранится как unlock с датой."""
-    return f"tomorrow:{(day + timedelta(days=1)).isoformat()}"
+tomorrow_item = quests.tomorrow_item  # реэкспорт: используется кнопкой «прогноз на завтра»
 
 
 def day_text(user: User, day: date) -> tuple[int, str]:
@@ -37,8 +35,9 @@ def day_text(user: User, day: date) -> tuple[int, str]:
 
 
 async def extra_lines(session: AsyncSession, user: User, day: date) -> str:
-    """Дополнения в конце сообщения (квест дня подключается в своём блоке)."""
-    return ""
+    """Квест дня под числом дня."""
+    quest = await quests.ensure(session, user, day)
+    return quests.text(quest) if quest else ""
 
 
 async def build_push(session: AsyncSession, user: User, day: date, kind: str = KIND) -> tuple[str, InlineKeyboardMarkup]:

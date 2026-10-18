@@ -56,13 +56,15 @@ def open_spheres_kb(items: list[str]) -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
-def friend_kb(items: list[str]) -> InlineKeyboardMarkup:
+def friend_kb(items: list[str], quest_done: bool = False) -> InlineKeyboardMarkup:
     """Под пушем «друг активировался»: открыть новые сферы и пригласить ещё (нажатия идут в push_log)."""
     rows = [
         _cb(msg.BTN_OPEN_SPHERE.format(title=SPHERE_TITLES[SPHERE_BY_ITEM[item]]), f"pc:friend:sphere_{SPHERE_BY_ITEM[item]}")
         for item in items
         if item in SPHERE_BY_ITEM
     ]
+    if quest_done:
+        rows.append(_cb(msg.BTN_OPEN_TOMORROW, "pc:friend:tomorrow"))
     rows.append(_cb(msg.BTN_INVITE_MORE, "pc:friend:invite"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
