@@ -32,7 +32,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [3/4] Applying migrations ...
+echo [3/4] Backing up bot.db before migrations ...
+".venv\Scripts\python.exe" -m scripts.premigrate_backup
+if errorlevel 1 (
+    echo [!] backup failed - migrations not applied
+    pause
+    exit /b 1
+)
+echo Applying migrations ...
 ".venv\Scripts\python.exe" -m alembic upgrade head
 if errorlevel 1 (
     echo [!] alembic upgrade failed

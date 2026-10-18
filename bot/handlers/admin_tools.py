@@ -14,7 +14,7 @@ from bot.content import messages as msg
 from bot.db.models import Referral, Unlock, User
 from bot.handlers.admin import IsAdmin
 from bot.handlers.admin_stats import user_label
-from bot.services import digest, texts
+from bot.services import digest, health, texts
 from bot.services.clock import as_utc, to_msk
 from bot.services.matrix_calc import calculate
 from bot.services.users import SOURCE_TAG
@@ -135,3 +135,19 @@ async def cmd_digest(message: Message, session: AsyncSession) -> None:
     await message.answer(
         "☀️ Утренний дайджест включён: каждый день в 09:00 МСК." if enabled else "Утренний дайджест выключен."
     )
+
+
+@router.message(Command("health"))
+async def cmd_health(message: Message, session: AsyncSession) -> None:
+    h = await health.collect(session)
+    last = fmt_dt(h.last_update) if h.last_update else "ещё не было"
+    await message.answer("\n".join([
+        "🩺 <b>Состояние бота</b>",
+        f"Аптайм: <b>{health.human_uptime(h.uptime)}</b>",
+        f"Размер базы: <b>{health.human_size(h.db_size) if h.db_size is not None else '—'}</b>",
+        f"Последнее обновление: <b>{last}</b>",
+        f"Активных каналов: <b>{h.active_channels}</b>",
+        f"Пользователей: <b>{h.users}</b>",
+        f"Последний бэкап SQLite: <b>{h.last_backup or '—'}</b>",
+        f"Удалили свои данные (/deletedata): <b>{h.deleted_data}</b>",
+    ]))

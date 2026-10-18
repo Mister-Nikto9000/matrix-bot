@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import keyboards as kb
 from bot.content import messages as msg
-from bot.db.models import Unlock, User
+from bot.db.models import DailyActivity, PushLog, Quest, Unlock, User
 from bot.handlers import matrix
+from bot.services import state as state_svc
 from bot.services.dates import format_date
 from bot.states import DateInput
 
@@ -55,7 +56,12 @@ async def cmd_deletedata(message: Message) -> None:
 async def cb_delete_yes(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext) -> None:
     user.birth_date = None
     user.gender = None
-    await session.execute(delete(Unlock).where(Unlock.user_id == user.id))
+    user.notify_daily = False  # без даты число дня не рассчитать
+    for table in (Unlock, PushLog, Quest, DailyActivity):
+        await session.execute(delete(table).where(table.user_id == user.id))
+    # от человека остаётся только обезличенный счётчик — сколько раз использовали /deletedata
+    count = int(await state_svc.get(session, "deleted_data_count") or 0)
+    await state_svc.set_value(session, "deleted_data_count", str(count + 1))
     await state.set_state(DateInput.waiting)
     await call.message.edit_text(msg.DELETED)
     await call.answer()

@@ -90,7 +90,7 @@ async def process_birth_date(
         return
 
     user.birth_date = birth_date
-    await events.track(session, user.id, "birth_date_set", {"date": birth_date.isoformat()})
+    await events.track(session, user.id, "birth_date_set")  # точную дату в события не пишем
     first_activation = user.activated_at is None
     if first_activation:
         user.activated_at = datetime.now(timezone.utc)

@@ -5,3 +5,5 @@ __pycache__/
 .pytest_cache/
 bot.db
 bot.db-*
+logs/
+backups/

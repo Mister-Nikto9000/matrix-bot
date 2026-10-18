@@ -5,7 +5,7 @@ from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.types import ChatJoinRequest, ChatMemberUpdated, InlineKeyboardMarkup, TelegramObject
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from bot.services import users
+from bot.services import health, users
 from bot.services.gender import current_user, render
 
 
@@ -21,6 +21,7 @@ class DbMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
+        health.touch_update()
         async with self.sessionmaker() as session:
             data["session"] = session
             tg_user = data.get("event_from_user")

@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -29,6 +31,7 @@ from bot.handlers import (
     start,
 )
 from bot.jobs import build_scheduler
+from bot.services import alerts, health
 from bot.middlewares import DbMiddleware, RenderMiddleware
 
 log = logging.getLogger("bot")
@@ -106,12 +109,25 @@ def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
     return dp
 
 
+LOG_FILE = Path("logs") / "bot.log"
+LOG_MAX_BYTES, LOG_BACKUPS = 5 * 1024 * 1024, 5  # 5 МБ × 5 файлов
+
+
+def setup_logging(log_file: Path = LOG_FILE) -> None:
+    """Лог в консоль и в logs/bot.log с ротацией (токен и даты рождения в лог не попадают)."""
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    file_handler = RotatingFileHandler(log_file, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUPS, encoding="utf-8")
+    console = logging.StreamHandler(sys.stdout)
+    for handler in (file_handler, console):
+        handler.setFormatter(fmt)
+    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console], force=True)
+    logging.getLogger("aiogram").setLevel(logging.INFO)
+
+
 async def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        stream=sys.stdout,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    setup_logging()
+    health.mark_started()
     settings = get_settings()
 
     engine = make_engine(settings.database_url)
@@ -128,6 +144,10 @@ async def main() -> None:
     log.info("Bot @%s started (long polling)", settings.bot_username)
     scheduler = build_scheduler(bot, sessionmaker)
     scheduler.start()
+    try:  # бот должен быть админом во всех активных каналах — иначе предупреждаем админов сразу при запуске
+        await alerts.run_alerts(bot, sessionmaker)
+    except Exception:  # noqa: BLE001 — проверка не должна мешать запуску
+        log.exception("Startup channel check failed")
     try:
         # chat_join_request и my_chat_member не приходят по умолчанию — явно перечисляем используемые апдейты
         allowed = dp.resolve_used_update_types()
