@@ -93,9 +93,14 @@ async def cb_check_subs(call: CallbackQuery, bot: Bot, session: AsyncSession, us
         await call.answer(msg.CHANNELS_STILL_MISSING, show_alert=True)
         return
     await call.answer()
+    already_seen = user.channels_ok_at is not None  # вернулся после отписки — разбор заново не шлём
     await _mark_ok(session, user, state, channels)
     try:
         await call.message.delete()
     except TelegramBadRequest:
         pass
+    if already_seen:
+        await call.message.answer(msg.CHANNELS_BACK)
+        await matrix.send_spheres_menu(call.message, session, user)
+        return
     await matrix.show_full(call.message, session, user)

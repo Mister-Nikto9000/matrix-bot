@@ -34,7 +34,7 @@ from bot.handlers import (
 )
 from bot.jobs import build_scheduler
 from bot.services import alerts, health
-from bot.middlewares import DbMiddleware, RenderMiddleware
+from bot.middlewares import DbMiddleware, RenderMiddleware, SubscriptionGate
 
 log = logging.getLogger("bot")
 
@@ -100,6 +100,7 @@ def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.middleware(db_mw)
     dp.callback_query.middleware(db_mw)
+    dp.callback_query.middleware(SubscriptionGate())  # после db_mw: нужны session и user
     dp.chat_join_request.middleware(db_mw)
     dp.my_chat_member.middleware(db_mw)
     dp.inline_query.middleware(db_mw)

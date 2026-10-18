@@ -2,9 +2,12 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
-from aiogram.types import ChatJoinRequest, ChatMemberUpdated, InlineKeyboardMarkup, Message, TelegramObject
+from aiogram.types import CallbackQuery, ChatJoinRequest, ChatMemberUpdated, InlineKeyboardMarkup, Message, TelegramObject
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from bot import keyboards as kb
+from bot.content import messages as msg
+from bot.services import channels as channels_svc
 from bot.services import health, users
 from bot.services.gender import current_user, render
 
@@ -49,6 +52,48 @@ class DbMiddleware(BaseMiddleware):
             await session.commit()
             users.mark_seen(session)
             return result
+
+
+# Действия, которые требуют действующей подписки. Тизер, разбор, приглашения и настройки — свободные:
+# разбор проверяет подписку сам (handlers/channels.py), приглашения приводят новых людей.
+GATED_CALLBACKS = ("sphere:", "story")
+GATED_PUSH_ACTIONS = ("spheres", "today", "tomorrow", "story")
+
+
+def needs_subscription(data: str | None) -> bool:
+    if not data:
+        return False
+    if data.startswith(GATED_CALLBACKS):
+        return True
+    if data.startswith("pc:"):
+        action = data.split(":", 2)[-1]
+        return action.startswith("sphere_") or action in GATED_PUSH_ACTIONS
+    return False
+
+
+class SubscriptionGate(BaseMiddleware):
+    """Перед сферами, картинкой для сторис и ежедневными кнопками проверяет подписку на активные каналы.
+
+    Отписавшийся получает просьбу вернуться; после «Проверить подписку» бот продолжает с меню.
+    Каналов нет или подписка на месте — хендлер отрабатывает как обычно.
+    """
+
+    async def __call__(self, handler, event: TelegramObject, data: dict[str, Any]) -> Any:
+        user = data.get("user")
+        if not isinstance(event, CallbackQuery) or user is None or not user.birth_date or not needs_subscription(event.data):
+            return await handler(event, data)
+        session = data["session"]
+        channels = await channels_svc.active_channels(session)
+        missing = await channels_svc.missing_channels(data["bot"], session, channels, user.tg_id) if channels else []
+        if not missing:
+            return await handler(event, data)
+        state = data.get("state")
+        if state is not None:
+            await state.update_data(missing_channels=[ch.id for ch in missing])
+        await event.answer()
+        text = msg.CHANNELS_LAPSED + (msg.CHANNELS_REQUEST_HINT if any(c.join_mode == "request" for c in missing) else "")
+        if event.message is not None:
+            await event.message.answer(text, reply_markup=kb.channels_kb(missing))
 
 
 class RenderMiddleware(BaseRequestMiddleware):

@@ -67,6 +67,7 @@ async def test_all_spec_events_are_recorded(tg, db):
         code = (await s.scalar(select(User).where(User.tg_id == A))).ref_code
     await tg.send(B, f"/start r_{code}")
     await tg.send(B, "23.11.1985")
+    tg.fake.members[(-1001, B)] = "member"
     await tg.click(B, "sphere:money")
     async with db() as s:
         names = set(await s.scalars(select(Event.name)))
