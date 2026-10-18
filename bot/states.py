@@ -7,3 +7,7 @@ class DateInput(StatesGroup):
 
 class GenderInput(StatesGroup):
     waiting = State()
+
+
+class BroadcastInput(StatesGroup):
+    text = State()

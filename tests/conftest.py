@@ -22,6 +22,7 @@ from aiogram.types import (  # noqa: E402
     ChatMemberAdministrator,
     ChatMemberLeft,
     ChatMemberMember,
+    Message,
     Update,
 )
 from aiogram.types import User as TgUser  # noqa: E402
@@ -51,14 +52,20 @@ class FakeTelegram(BaseSession):
     async def make_request(self, bot, method, timeout=None):
         self.calls.append(method)
         if isinstance(method, SendMessage):
+            if "BADHTML" in (method.text or ""):
+                from aiogram.exceptions import TelegramBadRequest
+                raise TelegramBadRequest(method=method, message="Bad Request: can't parse entities")
             if method.chat_id in self.retry_once:
                 from aiogram.exceptions import TelegramRetryAfter
                 raise TelegramRetryAfter(method=method, message="Too Many Requests", retry_after=self.retry_once.pop(method.chat_id))
             if method.chat_id in self.forbidden:
                 from aiogram.exceptions import TelegramForbiddenError
                 raise TelegramForbiddenError(method=method, message="Forbidden: bot was blocked by the user")
-            return {"message_id": next(self._ids), "date": int(datetime.now().timestamp()),
-                    "chat": {"id": method.chat_id, "type": "private"}, "text": method.text}
+            return Message.model_validate(
+                {"message_id": next(self._ids), "date": int(datetime.now().timestamp()),
+                 "chat": {"id": method.chat_id, "type": "private"}, "text": method.text},
+                context={"bot": bot},
+            )
         if isinstance(method, GetChatMember):
             user = TgUser(id=method.user_id, is_bot=method.user_id == bot.id, first_name="x")
             status = self.members.get((method.chat_id, method.user_id))

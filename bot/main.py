@@ -15,6 +15,7 @@ from bot.db.session import make_engine, make_sessionmaker
 from bot.db.models import ErrorLog
 from bot.handlers import (
     admin,
+    admin_broadcast,
     admin_stats,
     admin_tools,
     channel_admin,
@@ -96,7 +97,7 @@ def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
     dp.errors.register(make_on_error(db_mw))
     # start.router — последним: в нём перехват свободного текста (ввод даты)
     dp.include_routers(
-        admin.router, admin_stats.router, admin_tools.router, channel_admin.router, common.router, notifications.router, matrix.router, channels.router, invite.router,
+        admin.router, admin_stats.router, admin_tools.router, admin_broadcast.router, channel_admin.router, common.router, notifications.router, matrix.router, channels.router, invite.router,
         compat.router, start.router,
     )
     return dp

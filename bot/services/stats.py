@@ -12,6 +12,7 @@ from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import (
+    Broadcast,
     Channel,
     CompatPair,
     DailyActivity,
@@ -546,6 +547,9 @@ async def mailings(session: AsyncSession, p: Period) -> Mailings:
     for kind in sorted(set(sent) | set(blocked) | set(clicked)):
         m.pushes.append(PushRow(kind, sent[kind], blocked[kind], clicked[kind]))
     m.quests = await quest_stats(session, p)
+    m.broadcasts = list(await session.scalars(
+        select(Broadcast).where(*p.clauses(Broadcast.created_at)).order_by(Broadcast.id.desc()).limit(5)
+    ))
     return m
 
 

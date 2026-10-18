@@ -184,3 +184,22 @@ class Quest(Base):
     progress: Mapped[int] = mapped_column(Integer, default=0)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rewarded: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Broadcast(Base):
+    """Рассылка от админа: история и статистика."""
+
+    __tablename__ = "broadcasts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_by: Mapped[int] = mapped_column(BigInteger)  # Telegram ID админа
+    text: Mapped[str] = mapped_column(Text)
+    segment: Mapped[str] = mapped_column(String(24))
+    status: Mapped[str] = mapped_column(String(16), default="running")  # running / done / canceled / failed
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    blocked: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
