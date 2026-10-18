@@ -41,9 +41,10 @@ async def test_full_without_channels(tg, db):
     await tg.send(U, "07.03.1994")
     calls = await tg.click(U, "full")
     texts = sent_texts(calls)
-    assert "Аня, вот твой полный разбор" in texts[0] and "Зона комфорта — 3. Императрица" in texts[0]
-    assert "Небо — 18, Земля — 12" in texts[0]
-    menu = buttons(sent(calls)[1])
+    # разбор идёт двумя сообщениями, затем меню сфер
+    assert "Аня, вот твой полный разбор" in texts[0] and "Таланты — 3. Императрица" in texts[0]
+    assert "Зона комфорта — 3. Императрица" in texts[1] and "Небо — 18, Земля — 12" in texts[1]
+    menu = buttons(sent(calls)[2])
     assert menu[0].text.startswith("🔒 Деньги — пригласи ещё 1 друга")
     assert menu[1].text.startswith("🔒 Отношения — пригласи ещё 2 друзей")
     assert (await _user(db, U)).channels_ok_at is not None

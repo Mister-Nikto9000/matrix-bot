@@ -209,6 +209,13 @@ async def tg(db):
     yield TG(_dp, bot, fake)
 
 
+@pytest.fixture(autouse=True)
+def _no_pauses(monkeypatch):
+    """Паузы между сообщениями разбора в тестах не нужны."""
+    from bot.handlers import matrix
+    monkeypatch.setattr(matrix, "FULL_PAUSE", 0)
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"

@@ -49,7 +49,7 @@ async def test_teaser_and_full_contain_hooks(tg):
     teaser = sent_texts(await tg.send(U, "07.03.1994"))[1]
     assert teaser.endswith("🔒 Кармический хвост: 6-18-? — откроется за 3 друзей")
     calls = await tg.click(U, "full")
-    assert sent_texts(calls)[1] == msg.SPHERES_TITLE + "\n\n👉 Пригласи 1 друга — и сразу откроется сфера «Деньги»"
+    assert sent_texts(calls)[2] == msg.SPHERES_TITLE + "\n\n👉 Пригласи 1 друга — и сразу откроется сфера «Деньги»"
 
 
 def test_share_text_is_gender_neutral():

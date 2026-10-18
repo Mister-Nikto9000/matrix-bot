@@ -1,7 +1,9 @@
+import asyncio
 from datetime import date
 from html import escape
 
 from aiogram import F, Router
+from aiogram.enums import ChatAction
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -11,6 +13,7 @@ from bot import keyboards as kb
 from bot.content import messages as msg
 from bot.db.models import User
 from bot.services import events, referrals, texts, unlocks
+from bot.services.sending import send_long
 from bot.services.matrix_calc import Matrix, calculate, year_forecast
 from bot.services.referrals import friends, friends_acc
 from bot.states import DateInput, GenderInput
@@ -39,6 +42,9 @@ async def need_gender(message: Message, user: User, state: FSMContext, after: st
     await ask_gender(message, state, after)
     return True
 
+
+# Пауза между двумя сообщениями полного разбора (в тестах обнуляется)
+FULL_PAUSE = 1.0
 
 # Если аркан в тизере повторяется, для повтора берём первое предложение следующего поля
 TEASER_FALLBACK_FIELDS = ["purpose", "talents", "personality"]
@@ -117,17 +123,23 @@ async def send_teaser(message: Message, session: AsyncSession, user: User) -> No
 
 
 async def show_full(message: Message, session: AsyncSession, user: User) -> None:
+    """Полный разбор двумя сообщениями (лимит Telegram — 4096 символов), затем меню сфер."""
     m = calculate(user.birth_date)
     key = texts.user_key(user.tg_id)
-    text = "\n\n".join([
+    first = "\n\n".join([
         _title(user, msg.FULL_TITLE_NAMED, msg.FULL_TITLE),
         _block("👤", "Личность", m.a, texts.text(m.a, "personality", key)),
         _block("🎁", "Таланты", m.b, texts.text(m.b, "talents", key)),
+    ])
+    second = "\n\n".join([
         _block("🧭", "Предназначение", m.purpose, texts.text(m.purpose, "purpose", key))
         + "\n" + msg.FULL_PURPOSE_POINTS.format(sky=m.sky, earth=m.earth),
         _block("🏡", "Зона комфорта", m.e, texts.text(m.e, "comfort", key)),
     ])
-    await message.answer(text)
+    await send_long(message, first)
+    await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    await asyncio.sleep(FULL_PAUSE)
+    await send_long(message, second)
     await send_spheres_menu(message, session, user)
     await events.track(session, user.id, "full_shown")
 
