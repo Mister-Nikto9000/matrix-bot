@@ -180,7 +180,16 @@ def render_sphere(key: str, m: Matrix, today: date | None = None, text_key: str 
         year = (today or date.today()).year
         n = year_forecast(m, year)
         return msg.YEAR.format(year=year, num=n, name=texts.name(n), text=texts.text(n, "year", text_key))
-    return msg.SOON  # practices, ai
+    if key == "practices":
+        if m.purpose == m.e:
+            return msg.PRACTICES_SINGLE.format(
+                p=m.purpose, p_name=texts.name(m.purpose), p_text=texts.text(m.purpose, "practice", text_key)
+            )
+        return msg.PRACTICES.format(
+            p=m.purpose, p_name=texts.name(m.purpose), p_text=texts.text(m.purpose, "practice", text_key),
+            e=m.e, e_name=texts.name(m.e), e_text=texts.text(m.e, "practice", text_key),
+        )
+    return msg.SOON  # ai
 
 
 @router.message(Command("matrix"))

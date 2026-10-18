@@ -161,9 +161,9 @@ async def test_old_user_teaser_and_sphere(tg, db):
     await _forget_gender(db, U)
     async with db() as s:
         user = await s.scalar(select(User).where(User.tg_id == U))
-        s.add(Unlock(user_id=user.id, item="practices", source="admin"))
+        s.add(Unlock(user_id=user.id, item="ai", source="admin"))
         await s.commit()
-    assert sent_texts(await tg.click(U, "sphere:practices")) == [msg.GENDER_ASK]
+    assert sent_texts(await tg.click(U, "sphere:ai")) == [msg.GENDER_ASK]
     calls = await tg.click(U, "gender:m")
     assert sent_texts(calls) == ["🌱 Скоро появится — ты получишь доступ первым."]
 
