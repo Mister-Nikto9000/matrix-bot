@@ -1,0 +1,101 @@
+import asyncio
+import logging
+import sys
+
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramAPIError
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand, ErrorEvent
+
+from bot.config import get_settings
+from bot.content import messages as msg
+from bot.db.session import make_engine, make_sessionmaker
+from bot.handlers import admin, channel_admin, channels, common, compat, invite, matrix, start
+from bot.middlewares import DbMiddleware, RenderMiddleware
+
+log = logging.getLogger("bot")
+
+COMMANDS = [
+    BotCommand(command="start", description="Начать"),
+    BotCommand(command="matrix", description="Моя матрица"),
+    BotCommand(command="compat", description="Совместимость"),
+    BotCommand(command="invite", description="Пригласить друзей"),
+    BotCommand(command="settings", description="Изменить дату рождения"),
+    BotCommand(command="help", description="Помощь"),
+    BotCommand(command="deletedata", description="Удалить мои данные"),
+]
+
+
+async def on_error(event: ErrorEvent) -> bool:
+    log.exception("Unhandled error: %s", event.exception, exc_info=event.exception)
+    update = event.update
+    try:
+        if update.message:
+            await update.message.answer(msg.ERROR)
+        elif update.callback_query:
+            await update.callback_query.answer()
+            if update.callback_query.message:
+                await update.callback_query.message.answer(msg.ERROR)
+    except Exception:  # noqa: BLE001 — не даём обработчику ошибок упасть
+        log.exception("Failed to notify user about error")
+    return True
+
+
+async def setup_profile(bot: Bot) -> None:
+    """Описание бота в профиле. Ошибка (например, лимит запросов) не мешает запуску."""
+    try:
+        await bot.set_my_description(msg.BOT_DESCRIPTION)
+        await bot.set_my_short_description(msg.BOT_SHORT_DESCRIPTION)
+    except TelegramAPIError as e:
+        log.warning("Failed to set bot description: %s", e)
+
+
+def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.message.middleware(db_mw)
+    dp.callback_query.middleware(db_mw)
+    dp.chat_join_request.middleware(db_mw)
+    dp.my_chat_member.middleware(db_mw)
+    dp.errors.register(on_error)
+    # start.router — последним: в нём перехват свободного текста (ввод даты)
+    dp.include_routers(
+        admin.router, channel_admin.router, common.router, matrix.router, channels.router, invite.router,
+        compat.router, start.router,
+    )
+    return dp
+
+
+async def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        stream=sys.stdout,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    settings = get_settings()
+
+    engine = make_engine(settings.database_url)
+    sessionmaker = make_sessionmaker(engine)
+
+    bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(RenderMiddleware())  # формы {м|ж} по полу получателя
+    if not settings.bot_username:
+        settings.bot_username = (await bot.get_me()).username or ""
+
+    dp = build_dispatcher(DbMiddleware(sessionmaker))
+    await bot.set_my_commands(COMMANDS)
+    await setup_profile(bot)
+    log.info("Bot @%s started (long polling)", settings.bot_username)
+    try:
+        # chat_join_request и my_chat_member не приходят по умолчанию — явно перечисляем используемые апдейты
+        allowed = dp.resolve_used_update_types()
+        log.info("allowed_updates: %s", ", ".join(allowed))
+        await dp.start_polling(bot, allowed_updates=allowed)
+    finally:
+        await engine.dispose()
+        await bot.session.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

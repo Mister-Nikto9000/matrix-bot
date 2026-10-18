@@ -1,0 +1,117 @@
+from datetime import date, datetime, timezone
+
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    false,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# jsonb в PostgreSQL, обычный JSON в SQLite (для тестов)
+JsonType = JSON().with_variant(JSONB(), "postgresql")
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tg_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    username: Mapped[str | None] = mapped_column(String(64))
+    first_name: Mapped[str | None] = mapped_column(String(128))
+    birth_date: Mapped[date | None] = mapped_column(Date)
+    gender: Mapped[str | None] = mapped_column(String(1))  # f / m / NULL — ещё не выбрал(а)
+    ref_code: Mapped[str] = mapped_column(String(16), unique=True)
+    referrer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    channels_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Referral(Base):
+    __tablename__ = "referrals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    inviter_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    invited_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    kind: Mapped[str] = mapped_column(String(8))  # ref / comp
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Unlock(Base):
+    __tablename__ = "unlocks"
+    __table_args__ = (UniqueConstraint("user_id", "item", name="uq_unlocks_user_item"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    item: Mapped[str] = mapped_column(String(32))
+    source: Mapped[str] = mapped_column(String(16))  # gift / referral / admin
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CompatPair(Base):
+    __tablename__ = "compat_pairs"
+    __table_args__ = (UniqueConstraint("user_a", "user_b", name="uq_compat_pairs_users"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Пара хранится упорядоченно: user_a < user_b
+    user_a: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_b: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Channel(Base):
+    __tablename__ = "channels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    title: Mapped[str] = mapped_column(String(256))
+    url: Mapped[str] = mapped_column(String(256))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    joined_count: Mapped[int] = mapped_column(Integer, default=0)
+    # public — обычная подписка; request — закрытый канал со вступлением по заявке
+    join_mode: Mapped[str] = mapped_column(String(16), default="public", server_default="public")
+    # Бот сам одобряет заявки (нужно право can_invite_users)
+    auto_approve: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+
+
+class JoinRequest(Base):
+    """Заявка на вступление в канал. Для ОП заявка засчитывается как подписка."""
+
+    __tablename__ = "join_requests"
+    __table_args__ = (UniqueConstraint("tg_id", "chat_id", name="uq_join_requests_tg_chat"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tg_id: Mapped[int] = mapped_column(BigInteger)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    name: Mapped[str] = mapped_column(String(32), index=True)
+    payload: Mapped[dict | None] = mapped_column(JsonType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
