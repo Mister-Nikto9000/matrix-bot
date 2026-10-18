@@ -2,7 +2,7 @@ from datetime import timedelta, timezone
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     admin_ids: Annotated[list[int], NoDecode] = []
     database_url: str = "postgresql+asyncpg://bot:bot@db:5432/bot"
     bot_username: str = ""
+    data_dir: str = ""  # постоянная папка хостинга (Bothost задаёт DATA_DIR=/app/data)
+
+    @model_validator(mode="after")
+    def _default_db_in_data_dir(self):
+        """DATABASE_URL не задан, а хостинг дал постоянную папку — база SQLite лежит в ней."""
+        if self.data_dir and "database_url" not in self.model_fields_set:
+            self.database_url = f"sqlite+aiosqlite:///{self.data_dir.rstrip('/')}/bot.db"
+        return self
 
     @field_validator("admin_ids", mode="before")
     @classmethod

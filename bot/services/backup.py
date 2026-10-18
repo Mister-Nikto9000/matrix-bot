@@ -15,7 +15,8 @@ from sqlalchemy.engine import make_url
 
 log = logging.getLogger(__name__)
 
-BACKUP_DIR = Path(os.environ.get("BACKUP_DIR", "backups"))  # на хостинге — внутри постоянной папки, например data/backups
+# на хостинге — внутри постоянной папки (BACKUP_DIR или DATA_DIR/backups)
+BACKUP_DIR = Path(os.environ.get("BACKUP_DIR") or (os.path.join(os.environ["DATA_DIR"], "backups") if os.environ.get("DATA_DIR") else "backups"))
 KEEP = 7
 DAILY_NAME = re.compile(r"^bot-(\d{8})\.db$")
 BEFORE_V2 = "bot-before-v2.db"
