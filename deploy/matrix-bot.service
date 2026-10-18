@@ -7,9 +7,7 @@ Wants=network-online.target
 Type=simple
 User=matrixbot
 WorkingDirectory=/opt/matrix-bot
-# Миграции перед каждым стартом; бэкап базы делает scripts/premigrate_backup.py
-ExecStartPre=/opt/matrix-bot/.venv/bin/python scripts/premigrate_backup.py
-ExecStartPre=/opt/matrix-bot/.venv/bin/alembic upgrade head
+# Бэкап SQLite и миграции бот делает сам при старте (AUTO_MIGRATE=0 отключает)
 ExecStart=/opt/matrix-bot/.venv/bin/python -m bot.main
 Restart=always
 RestartSec=5

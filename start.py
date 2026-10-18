@@ -1,18 +1,7 @@
-"""Единая точка запуска для хостингов: бэкап SQLite → миграции → бот.
+"""Единая точка запуска для хостингов: python start.py (бот сам делает бэкап SQLite и миграции при старте)."""
+import asyncio
 
-Запуск: python start.py (то же, что делает Dockerfile).
-"""
-import subprocess
-import sys
-
-
-def step(*cmd: str) -> None:
-    code = subprocess.call(cmd)
-    if code != 0:
-        sys.exit(code)
-
+from bot.main import main
 
 if __name__ == "__main__":
-    step(sys.executable, "scripts/premigrate_backup.py")
-    step(sys.executable, "-m", "alembic", "upgrade", "head")
-    step(sys.executable, "-m", "bot.main")
+    asyncio.run(main())
