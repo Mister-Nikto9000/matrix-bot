@@ -1,4 +1,6 @@
+from datetime import timedelta, timezone
 from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -53,3 +55,12 @@ CHANNEL_CACHE_TTL = 600
 
 # Допустимый диапазон года рождения (верхняя граница — текущий год)
 MIN_BIRTH_YEAR = 1920
+
+
+# --- Время ---
+# «Сегодня», «вчера», тихие часы и рассылки считаются по Москве, а не по UTC
+TIMEZONE = "Europe/Moscow"
+try:
+    MSK = ZoneInfo(TIMEZONE)
+except ZoneInfoNotFoundError:  # на Windows без пакета tzdata; в Москве круглый год UTC+3
+    MSK = timezone(timedelta(hours=3), "MSK")

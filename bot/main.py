@@ -12,7 +12,20 @@ from aiogram.types import BotCommand, ErrorEvent
 from bot.config import get_settings
 from bot.content import messages as msg
 from bot.db.session import make_engine, make_sessionmaker
-from bot.handlers import admin, channel_admin, channels, common, compat, invite, matrix, start
+from bot.db.models import ErrorLog
+from bot.handlers import (
+    admin,
+    admin_stats,
+    admin_tools,
+    channel_admin,
+    channels,
+    common,
+    compat,
+    invite,
+    matrix,
+    start,
+)
+from bot.jobs import build_scheduler
 from bot.middlewares import DbMiddleware, RenderMiddleware
 
 log = logging.getLogger("bot")
@@ -28,7 +41,27 @@ COMMANDS = [
 ]
 
 
-async def on_error(event: ErrorEvent) -> bool:
+async def record_error(sessionmaker, exc: BaseException) -> None:
+    """Пишет ошибку в таблицу errors для отчёта и алерта; сбой записи не должен мешать ответу пользователю."""
+    if sessionmaker is None:
+        return
+    try:
+        async with sessionmaker() as session:
+            session.add(ErrorLog(kind=type(exc).__name__, message=str(exc)[:500]))
+            await session.commit()
+    except Exception:  # noqa: BLE001
+        log.exception("Failed to record error")
+
+
+def make_on_error(db_mw: DbMiddleware):
+    async def on_error(event: ErrorEvent) -> bool:
+        await record_error(db_mw.sessionmaker, event.exception)
+        return await notify_about_error(event)
+
+    return on_error
+
+
+async def notify_about_error(event: ErrorEvent) -> bool:
     log.exception("Unhandled error: %s", event.exception, exc_info=event.exception)
     update = event.update
     try:
@@ -58,10 +91,10 @@ def build_dispatcher(db_mw: DbMiddleware) -> Dispatcher:
     dp.callback_query.middleware(db_mw)
     dp.chat_join_request.middleware(db_mw)
     dp.my_chat_member.middleware(db_mw)
-    dp.errors.register(on_error)
+    dp.errors.register(make_on_error(db_mw))
     # start.router — последним: в нём перехват свободного текста (ввод даты)
     dp.include_routers(
-        admin.router, channel_admin.router, common.router, matrix.router, channels.router, invite.router,
+        admin.router, admin_stats.router, admin_tools.router, channel_admin.router, common.router, matrix.router, channels.router, invite.router,
         compat.router, start.router,
     )
     return dp
@@ -87,12 +120,15 @@ async def main() -> None:
     await bot.set_my_commands(COMMANDS)
     await setup_profile(bot)
     log.info("Bot @%s started (long polling)", settings.bot_username)
+    scheduler = build_scheduler(bot, sessionmaker)
+    scheduler.start()
     try:
         # chat_join_request и my_chat_member не приходят по умолчанию — явно перечисляем используемые апдейты
         allowed = dp.resolve_used_update_types()
         log.info("allowed_updates: %s", ", ".join(allowed))
         await dp.start_polling(bot, allowed_updates=allowed)
     finally:
+        await scheduler.stop()
         await engine.dispose()
         await bot.session.close()
 

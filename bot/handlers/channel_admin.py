@@ -17,6 +17,7 @@ from bot.content import messages as msg
 from bot.db.models import Channel, JoinRequest
 from bot.handlers.admin import IsAdmin
 from bot.services import channels as channels_svc
+from bot.services.notify import notify_admins
 from bot.services.channels import ADMIN_STATUSES, JOIN_MODES
 
 log = logging.getLogger(__name__)
@@ -25,14 +26,6 @@ router = Router(name="channel_admin")
 # my_chat_member не фильтруем: бота может добавить любой админ канала, а пишем всё равно ADMIN_IDS
 router.message.filter(IsAdmin())
 router.callback_query.filter(IsAdmin())
-
-
-async def _notify_admins(bot: Bot, text: str, reply_markup: InlineKeyboardMarkup | None = None) -> None:
-    for admin_id in get_settings().admin_ids:
-        try:
-            await bot.send_message(admin_id, text, reply_markup=reply_markup, disable_web_page_preview=True)
-        except TelegramAPIError as e:  # админ не запускал бота или заблокировал его
-            log.warning("Failed to notify admin %s: %s", admin_id, e)
 
 
 async def _offer(session: AsyncSession, chat_id: int, title: str, intro: str) -> tuple[str, InlineKeyboardMarkup]:
@@ -54,12 +47,12 @@ async def on_my_chat_member(update: ChatMemberUpdated, bot: Bot, session: AsyncS
     title = update.chat.title or str(update.chat.id)
     if is_admin and not was_admin:
         text, markup = await _offer(session, update.chat.id, title, msg.ADMIN_CHANNEL_OFFER)
-        await _notify_admins(bot, text, markup)
+        await notify_admins(bot, text, markup)
     elif was_admin and not is_admin:
         channel = await session.scalar(select(Channel).where(Channel.chat_id == update.chat.id))
         if channel is not None and channel.is_active:
             channel.is_active, channel.title = False, title
-            await _notify_admins(bot, msg.ADMIN_CHANNEL_REMOVED.format(title=escape(title)))
+            await notify_admins(bot, msg.ADMIN_CHANNEL_REMOVED.format(title=escape(title)))
 
 
 @router.message(F.forward_origin.type == MessageOriginType.CHANNEL)

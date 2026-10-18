@@ -3,13 +3,14 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from bot.db.models import Event, Referral, User
-from bot.handlers.admin import collect_stats
+from bot.services import stats
+from bot.services.stats import make_period
 from tests.conftest import sent_texts
 
 ADMIN, A, B, C = 999, 4001, 4002, 4003
 
 
-async def test_stats_counts_and_k_factor(tg, db):
+async def test_virality_counts_and_k_factor(tg, db):
     await tg.send(A, "/start")
     await tg.send(A, "07.03.1994")
     await tg.send(A, "/invite")
@@ -20,27 +21,32 @@ async def test_stats_counts_and_k_factor(tg, db):
     await tg.send(C, f"/start r_{code}")  # старт без активации
 
     async with db() as s:
-        st = await collect_stats(s, None)
-    assert (st.new_users, st.activated, st.invite_opened, st.ref_started, st.ref_activated, st.ref_users) == (3, 2, 1, 2, 1, 2)
-    assert st.k_factor == 0.5
-    assert round(st.ref_share, 2) == 0.67
+        v = await stats.virality(s, make_period("all"))
+        st = await stats.summary(s, make_period("all"))
+    assert (v.new_users, v.activated, v.openers, v.acts_ref, v.invited_users, v.invited_activated) == (3, 2, 1, 1, 2, 1)
+    assert v.k_total == 0.5 and v.k_ref == 0.5 and v.k_comp == 0
+    assert v.invites_per_opener == 2.0  # у единственного открывшего «Пригласить» два реферальных старта
+    assert (st.new, st.activated) == (3, 2)
 
-    calls = await tg.send(ADMIN, "/stats")
-    text = sent_texts(calls)[0]
-    assert "Сегодня (UTC)" in text and "7 дней" in text and "Всё время" in text
-    assert "K = 0.50" in text
+    text = sent_texts(await tg.send(ADMIN, "/stats"))[0]
+    assert "Сводка — Сегодня" in text and "Новые: <b>4</b>" in text  # 3 + сам админ, отправивший /stats
+    markup = [b.callback_data for row in (await _last_markup(tg)) for b in row]
+    assert "st:funnel:today" in markup and "st:summary:30d" in markup and "st:sources:today" in markup
+
+
+async def _last_markup(tg):
+    return [c for c in tg.fake.calls if getattr(c, "reply_markup", None)][-1].reply_markup.inline_keyboard
 
 
 async def test_stats_period_filter(tg, db):
     old = datetime.now(timezone.utc) - timedelta(days=30)
     async with db() as s:
-        u = User(tg_id=1, ref_code="old00001", created_at=old, activated_at=old, is_blocked=False)
-        s.add(u)
+        s.add(User(tg_id=1, ref_code="old00001", created_at=old, activated_at=old, is_blocked=False))
         await s.commit()
-        week = await collect_stats(s, datetime.now(timezone.utc) - timedelta(days=7))
-        total = await collect_stats(s, None)
-    assert (week.new_users, week.activated, week.k_factor) == (0, 0, 0.0)
-    assert (total.new_users, total.activated) == (1, 1)
+        week = await stats.summary(s, make_period("7d"))
+        total = await stats.summary(s, make_period("all"))
+    assert (week.new, week.activated) == (0, 0)
+    assert (total.new, total.activated) == (1, 1)
 
 
 async def test_all_spec_events_are_recorded(tg, db):
@@ -64,7 +70,7 @@ async def test_all_spec_events_are_recorded(tg, db):
     await tg.click(B, "sphere:money")
     async with db() as s:
         names = set(await s.scalars(select(Event.name)))
-    expected = {"start", "birth_date_set", "teaser_shown", "channels_prompt", "channels_ok", "full_shown",
+    expected = {"start", "birth_date_set", "teaser_shown", "channels_prompt", "full_clicked", "channels_ok", "full_shown",
                 "invite_opened", "share_clicked", "compat_link_created", "referral_started",
                 "referral_activated", "unlock", "sphere_opened"}
     assert expected <= names, expected - names

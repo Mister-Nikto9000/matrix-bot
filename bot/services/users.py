@@ -1,18 +1,62 @@
 import logging
+import re
 import secrets
 import string
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.models import User
+from bot.db.models import DailyActivity, User
+from bot.services.clock import msk_today, now_utc
 from bot.services.gender import render
 
 log = logging.getLogger(__name__)
 
 _ALPHABET = string.ascii_lowercase + string.digits
+
+SOURCE_TAG = re.compile(r"^[A-Za-z0-9_]{1,20}$")
+_seen_today: set[tuple[int, object]] = set()  # (user_id, день): запись daily_activity уже сделана
+
+
+def source_from_args(args: str) -> str:
+    """Источник трафика по параметру /start: r_ и c_ — ref, s_<тег> — тег, иначе organic."""
+    if args.startswith(("r_", "c_")):
+        return "ref"
+    if args.startswith("s_") and SOURCE_TAG.match(args[2:]):
+        return args[2:]
+    return "organic"
+
+
+async def touch(session: AsyncSession, user: User) -> None:
+    """Отмечает активность: last_seen_at и одна запись daily_activity в сутки (по Москве)."""
+    now = now_utc()
+    user.last_seen_at = now
+    key = (user.id, msk_today(now))
+    if key in _seen_today:
+        return
+    session.info["seen_key"] = key  # в кэш попадёт только после успешного коммита (см. mark_seen)
+    exists = await session.scalar(
+        select(DailyActivity.id).where(DailyActivity.user_id == user.id, DailyActivity.day == key[1])
+    )
+    if not exists:
+        try:
+            async with session.begin_nested():
+                session.add(DailyActivity(user_id=user.id, day=key[1]))
+        except IntegrityError:  # параллельный апдейт того же человека успел раньше
+            pass
+
+
+def mark_seen(session: AsyncSession) -> None:
+    """Вызывается после коммита: запись daily_activity за сегодня точно сохранена."""
+    key = session.info.pop("seen_key", None)
+    if key is None:
+        return
+    _seen_today.add(key)
+    if len(_seen_today) > 50_000:  # не растёт бесконечно: оставляем только сегодняшние
+        _seen_today.intersection_update({k for k in _seen_today if k[1] == key[1]})
 
 
 def new_ref_code() -> str:

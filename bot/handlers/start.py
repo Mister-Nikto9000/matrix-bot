@@ -33,6 +33,8 @@ async def cmd_start(
 ) -> None:
     args = (command.args or "").strip()
     await events.track(session, user.id, "start", {"args": args} if args else None)
+    if user.source is None:  # источник фиксируется один раз — при первом /start
+        user.source = users.source_from_args(args)
     await state.clear()
 
     gift = ""

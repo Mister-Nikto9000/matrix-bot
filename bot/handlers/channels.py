@@ -25,7 +25,7 @@ async def _mark_ok(session: AsyncSession, user: User, state: FSMContext, channel
     prompted = set(data.get("missing_channels", []))
     if user.channels_ok_at is None:
         user.channels_ok_at = datetime.now(timezone.utc)
-        await events.track(session, user.id, "channels_ok")
+        await events.track(session, user.id, "channels_ok", {"channels": sorted(prompted)})
         for ch in channels:
             if ch.id in prompted:
                 ch.joined_count += 1
@@ -71,6 +71,7 @@ async def cb_full(call: CallbackQuery, bot: Bot, session: AsyncSession, user: Us
     if not user.birth_date:
         await matrix.ask_date(call.message, state)
         return
+    await events.track(session, user.id, "full_clicked")
     if await matrix.need_gender(call.message, user, state, "full"):
         return
     await open_full(call.message, bot, session, user, state)

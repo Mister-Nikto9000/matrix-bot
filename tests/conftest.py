@@ -32,6 +32,7 @@ from bot.db.models import Base  # noqa: E402
 from bot.main import build_dispatcher  # noqa: E402
 from bot.middlewares import DbMiddleware, RenderMiddleware  # noqa: E402
 from bot.services import channels as channels_svc  # noqa: E402
+from bot.services import users as users_svc  # noqa: E402
 
 
 class FakeTelegram(BaseSession):
@@ -203,6 +204,7 @@ async def tg(db):
     _db_mw.sessionmaker = db
     _dp.fsm.storage = MemoryStorage()
     channels_svc._cache.clear()
+    users_svc._seen_today.clear()
     fake = FakeTelegram()
     bot = Bot("123:test", session=fake, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     fake.middleware(RenderMiddleware())

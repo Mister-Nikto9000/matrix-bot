@@ -9,8 +9,10 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     false,
+    true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -43,6 +45,12 @@ class User(Base):
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     channels_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # organic / ref / тег из s_<тег>; NULL — пользователь создан не через /start
+    source: Mapped[str | None] = mapped_column(String(32))
+    notify_daily: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    notify_marketing: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    notify_hour: Mapped[int] = mapped_column(Integer, default=9, server_default="9")
 
 
 class Referral(Base):
@@ -115,3 +123,35 @@ class Event(Base):
     name: Mapped[str] = mapped_column(String(32), index=True)
     payload: Mapped[dict | None] = mapped_column(JsonType)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class DailyActivity(Base):
+    """Один день — одна запись на пользователя; день считается по Москве."""
+
+    __tablename__ = "daily_activity"
+    __table_args__ = (UniqueConstraint("user_id", "day", name="uq_daily_activity_user_day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+
+
+class ErrorLog(Base):
+    """Необработанные ошибки бота (для отчёта по дням и алерта)."""
+
+    __tablename__ = "errors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    kind: Mapped[str] = mapped_column(String(64))
+    message: Mapped[str | None] = mapped_column(Text)
+
+
+class BotState(Base):
+    """Служебные значения: настройки дайджеста, время последних алертов и бэкапа."""
+
+    __tablename__ = "bot_state"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
