@@ -5,6 +5,7 @@
 PostgreSQL бэкапится средствами самой СУБД (pg_dump), здесь ничего не делаем.
 """
 import logging
+import os
 import re
 import sqlite3
 from datetime import date
@@ -14,7 +15,7 @@ from sqlalchemy.engine import make_url
 
 log = logging.getLogger(__name__)
 
-BACKUP_DIR = Path("backups")
+BACKUP_DIR = Path(os.environ.get("BACKUP_DIR", "backups"))  # на хостинге — внутри постоянной папки, например data/backups
 KEEP = 7
 DAILY_NAME = re.compile(r"^bot-(\d{8})\.db$")
 BEFORE_V2 = "bot-before-v2.db"

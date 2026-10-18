@@ -15,6 +15,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _upgrade(database_url: str) -> None:
+    from bot.services import backup
+
+    db_file = backup.sqlite_path(database_url)
+    if db_file is not None:
+        db_file.parent.mkdir(parents=True, exist_ok=True)  # data/ может ещё не существовать
     try:
         from scripts import premigrate_backup
 
