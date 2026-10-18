@@ -7,7 +7,7 @@ from bot import keyboards as kb
 from bot.config import REWARD_ORDER, get_settings
 from bot.content import messages as msg
 from bot.db.models import User
-from bot.services import events, referrals, unlocks, users
+from bot.services import events, pushes, referrals, unlocks
 from bot.services.referrals import Activation, friends
 
 router = Router(name="invite")
@@ -53,11 +53,15 @@ async def send_invite(message: Message, session: AsyncSession, user: User) -> No
     await events.track(session, user.id, "invite_opened")
 
 
-async def notify_inviter(bot: Bot, activation: Activation) -> None:
+async def notify_inviter(bot: Bot, session: AsyncSession, activation: Activation) -> None:
+    """Пуш пригласившему: друг активировался. Идёт через push_log, кнопки засчитывают нажатия."""
     text = msg.INVITER_ACTIVATED.format(count=activation.count)
     if activation.new_items:
         text += msg.INVITER_UNLOCKED.format(items=", ".join(msg.ITEM_TITLES[i] for i in activation.new_items))
-    await users.safe_send(bot, activation.inviter, text, reply_markup=kb.open_spheres_kb(activation.new_items))
+    await pushes.send_push(
+        bot, session, activation.inviter, "friend", text, kb.friend_kb(activation.new_items),
+        log_kind=f"friend:{activation.invited_id}", commit=False,
+    )
 
 
 @router.message(Command("invite"))

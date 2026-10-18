@@ -145,6 +145,13 @@ async def cb_push_click(call: CallbackQuery, bot: Bot, session: AsyncSession, us
         await compat.send_compat_link(call.message, session, user, state)
     elif action == "full":
         await channels.open_full(call.message, bot, session, user, state)
+    elif action.startswith("sphere_"):
+        key = action.removeprefix("sphere_")
+        item = matrix.SPHERE_ITEMS.get(key)
+        if item and await unlocks.is_unlocked(session, user.id, item):
+            await matrix.send_sphere(call.message, session, user, key)
+        else:
+            await matrix.send_spheres_menu(call.message, session, user)
     elif action == "spheres":
         await matrix.send_spheres_menu(call.message, session, user)
     elif action == "today":

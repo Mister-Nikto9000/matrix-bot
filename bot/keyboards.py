@@ -56,6 +56,17 @@ def open_spheres_kb(items: list[str]) -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
+def friend_kb(items: list[str]) -> InlineKeyboardMarkup:
+    """Под пушем «друг активировался»: открыть новые сферы и пригласить ещё (нажатия идут в push_log)."""
+    rows = [
+        _cb(msg.BTN_OPEN_SPHERE.format(title=SPHERE_TITLES[SPHERE_BY_ITEM[item]]), f"pc:friend:sphere_{SPHERE_BY_ITEM[item]}")
+        for item in items
+        if item in SPHERE_BY_ITEM
+    ]
+    rows.append(_cb(msg.BTN_INVITE_MORE, "pc:friend:invite"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def share_cb_kb(kind: str) -> InlineKeyboardMarkup:
     """kind: r — приглашение, c — совместимость. Нажатие пишет событие share_clicked."""
     return _kb(_cb(msg.BTN_SHARE, f"share:{kind}"))
@@ -88,6 +99,11 @@ def daily_offer_kb() -> InlineKeyboardMarkup:
 
 def daily_hours_kb() -> InlineKeyboardMarkup:
     return _kb([InlineKeyboardButton(text=f"{h}:00", callback_data=f"daily:h:{h}") for h in msg.DAILY_HOURS])
+
+
+def push_kb(kind: str, buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    """Кнопки автопуша: (текст, действие) → pc:<вид>:<действие>."""
+    return _kb(*[_cb(text, f"pc:{kind}:{action}") for text, action in buttons])
 
 
 def daily_kb(tomorrow_open: bool, kind: str = "daily") -> InlineKeyboardMarkup:

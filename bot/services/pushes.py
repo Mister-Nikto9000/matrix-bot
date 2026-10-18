@@ -7,6 +7,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
@@ -14,7 +15,7 @@ from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.models import PushLog, User
+from bot.db.models import PushLog, User, utcnow
 from bot.services import events
 from bot.services.gender import render, render_markup
 
@@ -86,20 +87,23 @@ async def send_push(
     text: str,
     markup: InlineKeyboardMarkup | None = None,
     log_kind: str | None = None,
+    now: datetime | None = None,
+    commit: bool = True,
 ) -> str:
     """Один пуш человеку. kind — вид для отчётов, log_kind — ключ дедупликации (по умолчанию = kind).
 
+    commit=False — когда вызываем изнутри обработчика, который сам коммитит транзакцию в конце.
     Возвращает sent / blocked / failed / skipped (такой пуш уже отправляли).
     """
     log_kind = log_kind or kind
     if await already_sent(session, user.id, log_kind):
         return "skipped"
-    session.add(PushLog(user_id=user.id, kind=log_kind))
-    await session.commit()  # занимаем место до отправки: при сбое не будет дублей
+    session.add(PushLog(user_id=user.id, kind=log_kind, sent_at=now or utcnow()))
+    await (session.commit() if commit else session.flush())  # занимаем место до отправки: при сбое не будет дублей
     result = await deliver(bot, user, text, markup)
     if result == "sent":
         await events.track(session, user.id, "push_sent", {"kind": kind})
     elif result == "blocked":
         await events.track(session, user.id, "push_blocked", {"kind": kind})
-    await session.commit()
+    await (session.commit() if commit else session.flush())
     return result

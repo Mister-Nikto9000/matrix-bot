@@ -87,7 +87,7 @@ async def test_referral_gift_activation_and_notification(tg, db):
     assert len(to_a) == 1
     assert to_a[0].text.startswith("🎉 По твоей ссылке рассчитали матрицу! Активировано: <b>1</b>")
     assert "💰 Деньги" in to_a[0].text
-    assert buttons(to_a[0])[0].callback_data == "sphere:money"
+    assert buttons(to_a[0])[0].callback_data == "pc:friend:sphere_money"
     assert await _unlocks(db, A) == {"money": "referral"}
 
     # у B подарок открыт — сфера показывается

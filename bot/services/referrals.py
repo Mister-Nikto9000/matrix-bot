@@ -104,6 +104,7 @@ class Activation:
     inviter: User
     count: int
     new_items: list[str]
+    invited_id: int = 0
 
 
 async def on_activated(session: AsyncSession, user: User) -> Activation | None:
@@ -132,4 +133,6 @@ async def on_activated(session: AsyncSession, user: User) -> Activation | None:
     if inviter is None:
         return None
     new_items = await apply_rewards(session, inviter)
-    return Activation(inviter=inviter, count=await counted_count(session, inviter.id), new_items=new_items)
+    return Activation(
+        inviter=inviter, count=await counted_count(session, inviter.id), new_items=new_items, invited_id=user.id
+    )

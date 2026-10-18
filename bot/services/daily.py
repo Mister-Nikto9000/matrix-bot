@@ -89,7 +89,7 @@ async def run_daily(bot: Bot, sessionmaker: async_sessionmaker, now: datetime) -
         for user in await due_users(session, day, local.hour):
             try:
                 text, markup = await build_push(session, user, day)
-                result = await pushes.send_push(bot, session, user, KIND, text, markup, log_kind=log_kind(day))
+                result = await pushes.send_push(bot, session, user, KIND, text, markup, log_kind=log_kind(day), now=now)
             except Exception:  # noqa: BLE001 — сбой одного получателя не прерывает рассылку
                 log.exception("daily push failed for user %s", user.id)
                 await session.rollback()

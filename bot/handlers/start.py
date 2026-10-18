@@ -102,7 +102,7 @@ async def process_birth_date(
     if first_activation:
         activation = await referrals.on_activated(session, user)
         if activation:
-            await invite.notify_inviter(bot, activation)
+            await invite.notify_inviter(bot, session, activation)
         if compat_with is None:
             # FSM живёт в памяти: после перезапуска бота берём пару из реферальной записи
             ref = await session.scalar(select(Referral).where(Referral.invited_id == user.id, Referral.kind == "comp"))
