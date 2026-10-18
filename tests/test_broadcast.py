@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from bot.content import messages as msg
 from bot.db.models import Broadcast, Referral, User
@@ -200,7 +200,6 @@ async def test_history_command(tg, db):
 
 async def test_telegram_formatting_is_preserved(tg):
     """Если админ оформил текст средствами Telegram (entities), они превращаются в HTML, а не теряются."""
-    from tests.conftest import sent_texts as _  # noqa: F401 — только для явности импорта
     await tg.send(ADMIN, "/broadcast")
     now = int(datetime.now().timestamp())
     calls = await tg._feed({"message": {

@@ -133,11 +133,11 @@ class Summary:
     errors_by_day: list[tuple[date, int]] = field(default_factory=list)
 
 
-async def daily_counts(session: AsyncSession, column, days: int = 14, now: datetime | None = None, *extra) -> list[int]:
+async def daily_counts(session: AsyncSession, column, days: int = 14, now: datetime | None = None) -> list[int]:
     """Сколько записей по колонке-времени в каждые из последних `days` московских суток (старые → новые)."""
     today = msk_today(now)
     first = today - timedelta(days=days - 1)
-    rows = await session.scalars(select(column).where(column >= day_start_utc(first), *extra))
+    rows = await session.scalars(select(column).where(column >= day_start_utc(first)))
     counter = Counter(msk_day(r) for r in rows)
     return [counter.get(first + timedelta(days=i), 0) for i in range(days)]
 

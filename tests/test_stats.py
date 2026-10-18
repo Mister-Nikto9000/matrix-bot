@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from bot.db.models import Event, Referral, User
+from bot.db.models import Event, User
 from bot.services import stats
 from bot.services.stats import make_period
 from tests.conftest import sent_texts

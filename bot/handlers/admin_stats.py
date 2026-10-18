@@ -24,6 +24,7 @@ SECTIONS = [
 ]
 SECTION_TITLES = dict(SECTIONS)
 DEFAULT_SECTION, DEFAULT_PERIOD = "summary", "today"
+MAX_REPORT = 3900
 NO_PERIOD = {"retention", "errors"}  # эти разделы считаются по фиксированному окну
 
 SPHERE_NAMES = {key: title for key, _, _, title in msg.SPHERE_BUTTONS}
@@ -227,6 +228,8 @@ async def render_report(session: AsyncSession, section: str, period_key: str) ->
     section = section if section in RENDERERS else DEFAULT_SECTION
     period_key = period_key if period_key in PERIOD_KEYS else DEFAULT_PERIOD
     text = await RENDERERS[section](session, make_period(period_key))
+    if len(text) > MAX_REPORT:  # лимит Telegram — 4096 символов; длинные отчёты (много каналов) обрезаем
+        text = text[:MAX_REPORT].rsplit("\n", 1)[0] + "\n…"
     return text, stats_kb(section, period_key)
 
 
@@ -244,7 +247,8 @@ async def cmd_sources(message: Message, session: AsyncSession) -> None:
 
 @router.callback_query(F.data.startswith("st:"))
 async def cb_stats(call: CallbackQuery, session: AsyncSession) -> None:
-    _, section, period_key = call.data.split(":", 2)
+    _, _, rest = call.data.partition(":")
+    section, _, period_key = rest.partition(":")
     text, markup = await render_report(session, section, period_key)
     try:
         await call.message.edit_text(text, reply_markup=markup)

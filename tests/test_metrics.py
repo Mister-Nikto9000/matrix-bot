@@ -8,8 +8,8 @@ from sqlalchemy import select
 
 from bot.db.models import Channel, DailyActivity, ErrorLog, Event, Referral, User
 from bot.services import alerts, digest, stats
-from bot.services.clock import day_start_utc, msk_today
-from bot.services.stats import Period, make_period, retention_for, sparkline
+from bot.services.clock import msk_today
+from bot.services.stats import make_period, retention_for, sparkline
 from bot.services.users import source_from_args
 from tests.conftest import sent_texts
 
@@ -38,6 +38,22 @@ def test_today_is_moscow_not_utc():
     assert today.since == datetime(2026, 10, 18, 21, 0, tzinfo=UTC)
     assert yesterday.since == datetime(2026, 10, 17, 21, 0, tzinfo=UTC) and yesterday.until == today.since
     assert msk_today(datetime(2026, 10, 18, 20, 59, tzinfo=UTC)) == date(2026, 10, 18)
+
+
+def test_moscow_offset_is_plus_three_even_without_tzdata():
+    from bot.config import MSK
+    assert datetime(2026, 10, 18, 12, 0, tzinfo=UTC).astimezone(MSK).utcoffset() == timedelta(hours=3)
+
+
+async def test_long_report_is_truncated_below_telegram_limit(tg, db):
+    from bot.handlers.admin_stats import render_report
+    async with db() as s:
+        for i in range(60):
+            s.add(Channel(chat_id=-2000 - i, title="Канал с довольно длинным названием " + "я" * 40, url="https://t.me/x",
+                          is_active=True, sort_order=i, joined_count=0))
+        await s.commit()
+        text, _ = await render_report(s, "channels", "all")
+    assert len(text) < 4096 and text.endswith("…")
 
 
 def test_sparkline():
@@ -286,7 +302,7 @@ async def test_export_csv_has_no_birth_dates_or_names(tg, db):
     code = (await _user(db, 5401)).ref_code
     await tg.send(5402, f"/start r_{code}")
     await tg.send(5402, "23.11.1985")
-    calls = await tg.send(ADMIN, "/export")
+    await tg.send(ADMIN, "/export")
     doc = next(c for c in tg.fake.calls if isinstance(c, SendDocument))
     raw = doc.document.data if hasattr(doc.document, "data") else doc.document.read()
     assert raw.startswith(b"\xef\xbb\xbf")

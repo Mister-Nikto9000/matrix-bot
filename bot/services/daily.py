@@ -1,6 +1,6 @@
 """Число дня: сообщение, предложение подписки, ежедневная рассылка."""
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, Message

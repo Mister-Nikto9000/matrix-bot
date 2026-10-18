@@ -25,7 +25,7 @@ from bot.db.models import Base, Channel, Unlock, User  # noqa: E402
 from bot.middlewares import RenderMiddleware  # noqa: E402
 from bot.handlers.admin_stats import render_report  # noqa: E402
 from bot.services import daily  # noqa: E402
-from tests.conftest import TG, FakeTelegram, _db_mw, _dp, buttons, sent  # noqa: E402
+from tests.conftest import TG, FakeTelegram, _db_mw, _dp, buttons  # noqa: E402
 
 A, B, M, ADMIN = 1001, 1002, 1003, 999
 OUT = Path("SAMPLE_OUTPUT.md")
@@ -95,9 +95,10 @@ async def main() -> None:
         # Число дня: подписка и утренняя рассылка (09:00 МСК сегодняшнего дня)
         add("«☀️ Присылать число дня» → выбор времени", await tg.click(A, "daily:on", first_name="Анна"))
         add("Выбор «9:00»", await tg.click(A, "daily:h:9", first_name="Анна"))
-        from datetime import datetime, timezone
+        from datetime import timedelta
+
         from bot.services.clock import day_start_utc, msk_today
-        nine_msk = day_start_utc(msk_today()).replace(tzinfo=timezone.utc) + __import__("datetime").timedelta(hours=9)
+        nine_msk = day_start_utc(msk_today()) + timedelta(hours=9)
         start = len(fake.calls)
         await daily.run_daily(bot, db, nine_msk)
         add("Утренний пуш «Число дня» в 9:00 (квест дня внутри)", fake.calls[start:])

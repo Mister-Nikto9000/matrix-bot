@@ -12,7 +12,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import keyboards as kb
-from bot.config import get_settings
 from bot.content import messages as msg
 from bot.db.models import Channel, JoinRequest
 from bot.handlers.admin import IsAdmin
