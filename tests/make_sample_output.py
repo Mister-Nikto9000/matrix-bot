@@ -18,12 +18,16 @@ from aiogram.fsm.storage.memory import MemoryStorage  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
+from aiogram.methods import AnswerInlineQuery, EditMessageText, SendMessage  # noqa: E402
+
 from bot.config import REWARD_ORDER  # noqa: E402
 from bot.db.models import Base, Channel, Unlock, User  # noqa: E402
 from bot.middlewares import RenderMiddleware  # noqa: E402
+from bot.handlers.admin_stats import render_report  # noqa: E402
+from bot.services import daily  # noqa: E402
 from tests.conftest import TG, FakeTelegram, _db_mw, _dp, buttons, sent  # noqa: E402
 
-A, B, M = 1001, 1002, 1003
+A, B, M, ADMIN = 1001, 1002, 1003, 999
 OUT = Path("SAMPLE_OUTPUT.md")
 
 
@@ -37,7 +41,9 @@ def to_md(html: str) -> str:
 
 def render(calls, chat_id: int) -> str:
     parts = []
-    for m in sent(calls, chat_id):
+    # сообщения бота и правки сообщений (выбор времени числа дня и т. п. меняет текст на месте)
+    shown = [c for c in calls if isinstance(c, (SendMessage, EditMessageText)) and c.chat_id == chat_id]
+    for m in shown:
         block = to_md(m.text)
         btns = buttons(m)
         if btns:
@@ -83,10 +89,20 @@ async def main() -> None:
             await s.commit()
         add("«Полный разбор» → экран подписки на канал с заявкой", await tg.click(A, "full", first_name="Анна"))
         await tg.join_request(A, -100900)
-        add("Заявка подана → «Проверить подписку» → полный разбор (девушка) и меню сфер",
+        add("Заявка подана → «Проверить подписку» → полный разбор (девушка): два сообщения, меню сфер, предложение числа дня",
             await tg.click(A, "check_subs", first_name="Анна"))
 
-        add("Экран приглашения (/invite)", await tg.send(A, "/invite", first_name="Анна"))
+        # Число дня: подписка и утренняя рассылка (09:00 МСК сегодняшнего дня)
+        add("«☀️ Присылать число дня» → выбор времени", await tg.click(A, "daily:on", first_name="Анна"))
+        add("Выбор «9:00»", await tg.click(A, "daily:h:9", first_name="Анна"))
+        from datetime import datetime, timezone
+        from bot.services.clock import day_start_utc, msk_today
+        nine_msk = day_start_utc(msk_today()).replace(tzinfo=timezone.utc) + __import__("datetime").timedelta(hours=9)
+        start = len(fake.calls)
+        await daily.run_daily(bot, db, nine_msk)
+        add("Утренний пуш «Число дня» в 9:00 (квест дня внутри)", fake.calls[start:])
+
+        add("Экран приглашения (/invite) с квестом дня", await tg.send(A, "/invite", first_name="Анна"))
         add("Кнопка «Поделиться»", await tg.click(A, "share:r", first_name="Анна"))
 
         # Для примера открываем все сферы
@@ -106,20 +122,46 @@ async def main() -> None:
         add("Партнёр выбирает «👨 Парень»", await tg.click(B, "gender:m", first_name="Максим"), B)
         calls = await tg.send(B, "15.08.1990", first_name="Максим")
         add("Партнёр вводит 15.08.1990 — что видит партнёр (кратко, без подробностей)", calls, B)
-        add("…и что приходит Анне (подробная совместимость открыта)", calls, A)
+        add("…и что приходит Анне (подробная совместимость + пуш «друг активировался» с выполненным квестом)", calls, A)
+        add("Кнопка «Открыть прогноз на завтра» из пуша", await tg.click(A, "pc:friend:tomorrow", first_name="Анна"))
+
+        # Inline-режим и картинка для сторис
+        await tg.inline(A, first_name="Анна")
+        answer = [c for c in fake.calls if isinstance(c, AnswerInlineQuery)][-1]
+        inline_md = []
+        for r in answer.results:
+            btn = r.reply_markup.inline_keyboard[0][0]
+            inline_md.append(f"**{r.title}** — _{r.description}_\n" + to_md(r.input_message_content.message_text)
+                             + f"\n\nКнопка: `[{btn.text}]` → {btn.url}")
+        sections.append(("Inline-режим: @бот в любом чате → три карточки", "\n\n---\n\n".join(inline_md)))
+        await tg.click(A, "story", first_name="Анна")
+        story = [c for c in fake.calls if getattr(c, "caption", None)][-1]
+        sections.append(("Кнопка «🖼 Картинка для сторис» — подпись к PNG 1080×1920 (на картинке номер, название, фраза, ссылка)",
+                         to_md(story.caption)))
+
+        # Админ: метрики
+        await tg.send(ADMIN, "/start", first_name="Админ")
+        async with db() as s:
+            for section, period in (("summary", "all"), ("funnel", "all"), ("virality", "all"), ("sources", "all"),
+                                    ("mailings", "all")):
+                text, _ = await render_report(s, section, period)
+                sections.append((f"/stats → {section}", to_md(text)))
+        add("/link vk_may", await tg.send(ADMIN, "/link vk_may"), ADMIN)
 
         await engine.dispose()
 
     lines = [
         "# Пример выдачи бота",
         "",
+        "Версия 2: полный разбор в 2–3 раза длиннее и выходит двумя сообщениями, число дня, квест дня, пуши, "
+        "inline-режим, картинка для сторис, практики, метрики для админа.\n\n"
         "Дата рождения: **07.03.1994**, имя пользователя в Telegram — Анна (обращение «Девушка»). "
         "Для сравнения тизер и полный разбор той же даты показаны для обращения «Парень» (Илья). "
         "Совместимость — с партнёром 15.08.1990 (Максим).",
         "",
         "Сгенерировано командой `python -m tests.make_sample_output` через настоящий диспетчер бота "
         "(Telegram и БД подменены). HTML-разметка переведена в Markdown, кнопки перечислены под сообщением. "
-        "Для примера в разделе сфер у Анны открыты все награды; прогноз на год — для текущего года.",
+        "Для примера в разделе сфер у Анны открыты все награды; прогноз на год и число дня — для даты генерации файла.",
         "",
     ]
     for title, body in sections:
