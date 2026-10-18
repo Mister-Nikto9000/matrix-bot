@@ -1,6 +1,6 @@
 """Поиск в arcana.json мужских форм, обращённых к пользователю, вне шаблонов {м|ж}.
 
-Запуск из корня проекта: python -m scripts.check_gender [путь к arcana.json]
+Запуск из корня проекта: python -m scripts.check_gender [путь к arcana.json]\nБез аргумента проверяются и arcana.json, и тексты интерфейса messages.py
 Шаблоны заменяются на «…», затем ищутся типичные мужские формы при обращении на «ты»:
 прилагательные (-ый, -ий, -ой), краткие формы (готов, уверен, рад, сам…),
 прошедшее время (-л), «<прилагательное> человек» и «сам/самому».
@@ -51,8 +51,26 @@ def scan(path: Path = ARCANA) -> list[tuple[str, str, str, str, str]]:
     return found
 
 
+def scan_messages() -> list[tuple[str, str, str, str, str]]:
+    """То же для текстов интерфейса: все строковые константы bot/content/messages.py (и значения словарей)."""
+    from bot.content import messages
+
+    found = []
+    for name in dir(messages):
+        value = getattr(messages, name)
+        texts = [value] if isinstance(value, str) else [v for v in value.values() if isinstance(v, str)] if isinstance(value, dict) else []
+        for text in texts:
+            plain = TEMPLATE.sub("…", text)
+            for kind, pattern in CHECKS:
+                for m in pattern.finditer(plain):
+                    if m.group(1).lower() not in SKIP:
+                        found.append(("messages", name, kind, m.group(1), plain[max(0, m.start() - 20):m.end() + 20].strip()))
+    return found
+
+
 def main() -> int:
     found = scan(Path(sys.argv[1]) if len(sys.argv) > 1 else ARCANA)
+    found += scan_messages() if len(sys.argv) <= 1 else []
     for n, field, kind, word, ctx in found:
         print(f"[{n}] {field}: {kind}: «{word}» — …{ctx}…")
     print(f"\nНайдено: {len(found)}")

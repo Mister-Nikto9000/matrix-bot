@@ -222,3 +222,24 @@ async def test_render_applies_to_buttons_and_alerts(tg, db):
 def test_check_script_finds_nothing():
     from scripts.check_gender import scan
     assert scan() == []
+
+
+def test_check_script_finds_nothing_in_interface_texts():
+    from scripts.check_gender import scan_messages
+    assert scan_messages() == []
+
+
+def test_every_template_in_messages_renders_for_both_genders():
+    """Шаблоны {м|ж} во всех новых текстах корректны: после подстановки не остаётся ни скобок, ни «|»."""
+    from bot.content import messages as m
+
+    checked = 0
+    for name in dir(m):
+        value = getattr(m, name)
+        for text in ([value] if isinstance(value, str) else list(value.values()) if isinstance(value, dict) else []):
+            if isinstance(text, str) and has_templates(text):
+                checked += 1
+                for gender in ("f", "m"):
+                    out = render(text, gender)
+                    assert "|" not in out and not has_templates(out), (name, gender)
+    assert checked >= 1

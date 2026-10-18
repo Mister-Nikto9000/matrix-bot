@@ -226,8 +226,12 @@ _dp = build_dispatcher(_db_mw)
 
 @pytest_asyncio.fixture
 async def db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{(tmp_path / 't.db').as_posix()}")
+    """БД для теста. По умолчанию SQLite во временной папке; TEST_DATABASE_URL=postgresql+asyncpg://… — PostgreSQL."""
+    url = os.environ.get("TEST_DATABASE_URL") or f"sqlite+aiosqlite:///{(tmp_path / 't.db').as_posix()}"
+    engine = create_async_engine(url)
     async with engine.begin() as conn:
+        if not url.startswith("sqlite"):
+            await conn.run_sync(Base.metadata.drop_all)  # чистая схема на каждый тест
         await conn.run_sync(Base.metadata.create_all)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
