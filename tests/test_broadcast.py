@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from bot.content import messages as msg
-from bot.db.models import Broadcast, Referral, User
+from bot.db.models import Broadcast, Channel, Referral, User
 from bot.handlers.admin_stats import render_mailings
 from bot.services import broadcast as bc_svc
 from bot.services import pushes
@@ -207,3 +207,71 @@ async def test_telegram_formatting_is_preserved(tg):
         "text": "Жирный текст", "entities": [{"type": "bold", "offset": 0, "length": 6}],
     }})
     assert sent_texts(calls)[0] == "<b>Жирный</b> текст"
+
+
+async def _channel(db, chat_id=-1001, title="Наш канал"):
+    async with db() as s:
+        ch = Channel(chat_id=chat_id, title=title, url="https://t.me/k", is_active=True, sort_order=1, joined_count=0)
+        s.add(ch)
+        await s.commit()
+        return ch.id
+
+
+async def test_channel_segment_only_subscribers_of_chosen_channel(tg, db):
+    await _setup_audience(tg, db)
+    ch1, ch2 = await _channel(db, -1001, "Первый"), await _channel(db, -1002, "Второй")
+    tg.fake.members[(-1001, G1)] = "member"          # G1 подписана на оба
+    tg.fake.members[(-1002, G1)] = "member"
+    tg.fake.members[(-1001, B1)] = "member"         # B1 — только на первый
+    tg.fake.members[(-1001, S1)] = "member"         # S1 подписан, но отключил рассылки — не получит
+    calls = await _start_flow(tg)
+    segs = _segment_buttons(sent(calls)[1])
+    assert segs[f"bc:seg:ch{ch1}"] == "📣 Подписчики канала: Первый"
+    assert segs[f"bc:seg:ch{ch2}"] == "📣 Подписчики канала: Второй"
+
+    calls = await tg.click(ADMIN, f"bc:seg:ch{ch1}")
+    texts = sent_texts(calls)
+    assert "Проверяю" in texts[0] and "Подписчики канала «Первый»" in texts[1] and "<b>2</b>" in texts[1]
+
+    await tg.click(ADMIN, "bc:go")
+    start = len(tg.fake.calls)
+    await tg.click(ADMIN, "bc:yes")
+    await _wait_broadcasts()
+    delivered = {m.chat_id for m in sent(tg.fake.calls[start:]) if m.chat_id != ADMIN}
+    assert delivered == {G1, B1}
+
+    async with db() as s:
+        bc = await s.scalar(select(Broadcast))
+        assert (bc.segment, bc.total, bc.sent) == (f"ch{ch1}", 2, 2)
+    history = sent_texts(await tg.send(ADMIN, "/broadcasts"))[0]
+    assert "Подписчики канала «Первый»" in history
+
+
+async def test_channel_segment_counts_join_request_as_subscription(tg, db):
+    from bot.db.models import JoinRequest
+
+    await _setup_audience(tg, db)
+    ch = await _channel(db, -1003, "Закрытый")
+    async with db() as s:
+        s.add(JoinRequest(tg_id=G2, chat_id=-1003))
+        await s.commit()
+    await _start_flow(tg)
+    calls = await tg.click(ADMIN, f"bc:seg:ch{ch}")
+    assert "<b>1</b>" in sent_texts(calls)[1]
+
+
+async def test_channel_segment_reports_check_failure(tg, db, monkeypatch):
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import GetChatMember
+
+    await _setup_audience(tg, db)
+    ch = await _channel(db)
+
+    async def broken(*args, **kwargs):
+        raise TelegramBadRequest(method=GetChatMember(chat_id=-1001, user_id=1), message="chat not found")
+
+    monkeypatch.setattr("bot.services.broadcast._subscribed", broken)
+    await _start_flow(tg)
+    calls = await tg.click(ADMIN, f"bc:seg:ch{ch}")
+    assert "Не получилось проверить подписку" in sent_texts(calls)[-1]
+    assert "bc:go" not in [b.callback_data for c in sent(calls) for b in buttons(c)]

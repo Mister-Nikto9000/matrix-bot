@@ -9,10 +9,13 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from aiogram import Bot
+from aiogram.enums import ChatMemberStatus
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.db.models import Broadcast, Referral, User
+from bot.db.models import Broadcast, Channel, Referral, User
+from bot.services import channels as channels_svc
 from bot.services import pushes
 from bot.services.clock import now_utc
 
@@ -25,11 +28,59 @@ SEGMENTS = {
     "girls": "Девушки",
     "boys": "Парни",
 }
+CHANNEL_PREFIX = "ch"  # сегмент «подписчики канала»: ключ ch<id канала в базе>
+CHECK_PAUSE = 0.04  # пауза между проверками подписки (~25 запросов в секунду)
 PROGRESS_EVERY = 25  # сообщений между обновлениями прогресса и коммитами
 MAX_TEXT = 4096
 
 tasks: set[asyncio.Task] = set()  # запущенные рассылки (держим ссылки, чтобы их не собрал сборщик мусора)
 stop_requests: set[int] = set()
+
+
+def channel_segment_id(key: str) -> int | None:
+    """ch12 → 12; для обычных сегментов None."""
+    if key.startswith(CHANNEL_PREFIX) and key[len(CHANNEL_PREFIX):].isdigit():
+        return int(key[len(CHANNEL_PREFIX):])
+    return None
+
+
+async def segment_title(session: AsyncSession, key: str) -> str:
+    channel_id = channel_segment_id(key)
+    if channel_id is None:
+        return SEGMENTS.get(key, key)
+    channel = await session.get(Channel, channel_id)
+    return f"Подписчики канала «{channel.title if channel else channel_id}»"
+
+
+async def _subscribed(bot: Bot, channel: Channel, tg_id: int, requested: set[int]) -> bool:
+    """Строгая проверка подписки: при ошибке Telegram исключение уходит наверх (в отличие от channels.is_member)."""
+    if channel.chat_id in requested:
+        return True
+    while True:
+        try:
+            member = await bot.get_chat_member(channel.chat_id, tg_id)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+            continue
+        return member.status in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR) or (
+            member.status == ChatMemberStatus.RESTRICTED and getattr(member, "is_member", False)
+        )
+
+
+async def channel_member_ids(bot: Bot, session: AsyncSession, channel: Channel) -> list[int]:
+    """Пользователи бота (активированные, не заблокировавшие, не отключившие рассылки), подписанные на канал.
+
+    Telegram не отдаёт список подписчиков канала: написать можно только тем, кто сам запускал бота.
+    TelegramAPIError (бот не админ канала, канал удалён) поднимается наверх — админ должен увидеть причину.
+    """
+    rows = (await session.execute(segment_stmt("all").with_only_columns(User.id, User.tg_id).order_by(User.id))).all()
+    result = []
+    for uid, tg_id in rows:
+        requested = await channels_svc.requested_chats(session, tg_id)
+        if await _subscribed(bot, channel, tg_id, requested):
+            result.append(uid)
+        await asyncio.sleep(CHECK_PAUSE)
+    return result
 
 
 def segment_stmt(key: str):
@@ -62,12 +113,20 @@ ProgressCallback = Callable[[Broadcast], Awaitable[None]]
 
 
 async def run_broadcast(
-    bot: Bot, sessionmaker: async_sessionmaker, broadcast_id: int, on_progress: ProgressCallback | None = None
+    bot: Bot,
+    sessionmaker: async_sessionmaker,
+    broadcast_id: int,
+    on_progress: ProgressCallback | None = None,
+    ids: list[int] | None = None,
 ) -> Broadcast:
-    """Отправляет рассылку и обновляет счётчики в таблице broadcasts."""
+    """Отправляет рассылку и обновляет счётчики в таблице broadcasts.
+
+    ids — заранее найденные получатели (сегмент «подписчики канала» проверяется один раз при выборе).
+    """
     async with sessionmaker() as session:
         bc = await session.get(Broadcast, broadcast_id)
-        ids = await segment_ids(session, bc.segment)
+        if ids is None:
+            ids = await segment_ids(session, bc.segment)
         bc.status, bc.total, bc.started_at = "running", len(ids), now_utc()
         await session.commit()
         try:

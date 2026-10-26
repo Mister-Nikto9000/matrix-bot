@@ -11,9 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.content import messages as msg
-from bot.db.models import Broadcast, User
+from bot.db.models import Broadcast, Channel, User
 from bot.handlers.admin import IsAdmin
 from bot.services import broadcast as bc_svc
+from bot.services import channels as channels_svc
 from bot.services.gender import render
 from bot.states import BroadcastInput
 
@@ -37,6 +38,8 @@ async def segments_kb(session: AsyncSession) -> InlineKeyboardMarkup:
         _btn(msg.BC_SEGMENT_BTN.format(title=title, count=await bc_svc.segment_size(session, key)), f"bc:seg:{key}")
         for key, title in bc_svc.SEGMENTS.items()
     ]
+    for channel in await channels_svc.active_channels(session):
+        rows.append(_btn(msg.BC_CHANNEL_BTN.format(title=channel.title), f"bc:seg:{bc_svc.CHANNEL_PREFIX}{channel.id}"))
     rows.append(_btn(msg.BC_BTN_CANCEL, "bc:cancel"))
     return _kb(*rows)
 
@@ -64,7 +67,7 @@ async def cmd_history(message: Message, session: AsyncSession) -> None:
         return
     lines = ["📤 <b>Последние рассылки</b>"]
     lines += [
-        f"#{b.id} {b.created_at:%d.%m %H:%M} · {bc_svc.SEGMENTS.get(b.segment, b.segment)} · "
+        f"#{b.id} {b.created_at:%d.%m %H:%M} · {await bc_svc.segment_title(session, b.segment)} · "
         f"отправлено {b.sent}, заблокировали {b.blocked}, ошибки {b.failed} ({b.status})"
         for b in rows
     ]
@@ -103,21 +106,38 @@ async def _draft(call: CallbackQuery, state: FSMContext) -> dict | None:
 
 
 @router.callback_query(F.data.startswith("bc:seg:"))
-async def cb_segment(call: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+async def cb_segment(call: CallbackQuery, bot: Bot, session: AsyncSession, state: FSMContext) -> None:
     if await _draft(call, state) is None:
         return
     key = call.data.split(":", 2)[2]
-    if key not in bc_svc.SEGMENTS:
+    channel_id = bc_svc.channel_segment_id(key)
+    if key not in bc_svc.SEGMENTS and channel_id is None:
         await call.answer()
         return
-    count = await bc_svc.segment_size(session, key)
-    await state.update_data(segment=key)
-    await call.answer()
+    ids = None
+    if channel_id is not None:
+        channel = await session.get(Channel, channel_id)
+        if channel is None:
+            await call.answer(msg.BC_CHANNEL_GONE, show_alert=True)
+            return
+        await call.answer()
+        await call.message.answer(msg.BC_CHECKING_CHANNEL.format(title=channel.title))
+        try:
+            ids = await bc_svc.channel_member_ids(bot, session, channel)
+        except TelegramAPIError as e:
+            log.warning("channel segment check failed for channel %s: %s", channel_id, e)
+            await call.message.answer(msg.BC_CHANNEL_CHECK_FAILED.format(error=str(e).replace("<", "&lt;")))
+            return
+        count = len(ids)
+    else:
+        count = await bc_svc.segment_size(session, key)
+        await call.answer()
+    await state.update_data(segment=key, ids=ids)
     rows = [_btn(msg.BC_BTN_TEST, "bc:test")]
     if count:
         rows.append(_btn(msg.BC_BTN_GO, "bc:go"))
     rows += [_btn(msg.BC_BTN_BACK, "bc:back"), _btn(msg.BC_BTN_CANCEL, "bc:cancel")]
-    text = msg.BC_SEGMENT_SUMMARY.format(title=bc_svc.SEGMENTS[key], count=count)
+    text = msg.BC_SEGMENT_SUMMARY.format(title=await bc_svc.segment_title(session, key), count=count)
     if not count:
         text += f"\n{msg.BC_EMPTY_SEGMENT}"
     await call.message.answer(text, reply_markup=_kb(*rows))
@@ -145,10 +165,11 @@ async def cb_go(call: CallbackQuery, session: AsyncSession, state: FSMContext) -
     data = await _draft(call, state)
     if data is None or "segment" not in data:
         return
-    count = await bc_svc.segment_size(session, data["segment"])
+    ids = data.get("ids")
+    count = len(ids) if ids is not None else await bc_svc.segment_size(session, data["segment"])
     await call.answer()
     await call.message.answer(
-        msg.BC_CONFIRM.format(count=count, title=bc_svc.SEGMENTS[data["segment"]]),
+        msg.BC_CONFIRM.format(count=count, title=await bc_svc.segment_title(session, data["segment"])),
         reply_markup=_kb(_btn(msg.BC_BTN_CONFIRM.format(count=count), "bc:yes"), _btn(msg.BC_BTN_NO, "bc:back")),
     )
 
@@ -169,12 +190,14 @@ async def cb_yes(call: CallbackQuery, bot: Bot, session: AsyncSession, state: FS
     progress_msg = await call.message.answer(
         bc_svc.progress(bc), reply_markup=_kb(_btn(msg.BC_BTN_STOP, f"bc:stop:{bc.id}"))
     )
-    task = asyncio.create_task(_run_and_report(bot, session.bind, bc.id, progress_msg))
+    task = asyncio.create_task(_run_and_report(bot, session.bind, bc.id, progress_msg, data.get("ids")))
     bc_svc.tasks.add(task)
     task.add_done_callback(bc_svc.tasks.discard)
 
 
-async def _run_and_report(bot: Bot, bind, broadcast_id: int, progress_msg: Message) -> None:
+async def _run_and_report(
+    bot: Bot, bind, broadcast_id: int, progress_msg: Message, ids: list[int] | None = None
+) -> None:
     sessionmaker = async_sessionmaker(bind, expire_on_commit=False)
 
     async def on_progress(bc: Broadcast) -> None:
@@ -185,7 +208,7 @@ async def _run_and_report(bot: Bot, bind, broadcast_id: int, progress_msg: Messa
         except TelegramAPIError:  # «message is not modified» и прочее — прогресс не критичен
             pass
 
-    bc = await bc_svc.run_broadcast(bot, sessionmaker, broadcast_id, on_progress)
+    bc = await bc_svc.run_broadcast(bot, sessionmaker, broadcast_id, on_progress, ids)
     try:
         await progress_msg.edit_text(bc_svc.report(bc))
     except TelegramAPIError:

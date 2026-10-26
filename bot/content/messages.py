@@ -377,6 +377,13 @@ BC_BAD_HTML = "Telegram не принял разметку: {error}\nИспра�
 BC_PREVIEW_HEADER = "👆 Так увидят получатели. Выбери, кому отправить:"
 BC_SEGMENT_BTN = "{title} ({count})"
 BC_SEGMENT_SUMMARY = "Сегмент: <b>{title}</b>\nПолучателей: <b>{count}</b>\n\nСначала можно отправить тест себе."
+BC_CHANNEL_BTN = "📣 Подписчики канала: {title}"
+BC_CHECKING_CHANNEL = "⏳ Проверяю, кто из пользователей бота подписан на «{title}»… Это займёт до пары минут."
+BC_CHANNEL_GONE = "Этот канал уже удалён из списка."
+BC_CHANNEL_CHECK_FAILED = (
+    "Не получилось проверить подписку: {error}\n"
+    "Проверь, что бот — админ канала (/channels), и попробуй ещё раз."
+)
 BC_BTN_TEST = "📩 Отправить тест мне"
 BC_BTN_GO = "🚀 Запустить"
 BC_BTN_BACK = "↩️ Другой сегмент"
